@@ -1080,6 +1080,7 @@ namespace ts {
         expression: LeftHandSideExpression;
         name: Identifier;
     }
+
     /** Brand for a PropertyAccessExpression which, like a QualifiedName, consists of a sequence of identifiers separated by dots. */
     export interface PropertyAccessEntityNameExpression extends PropertyAccessExpression {
         _propertyAccessExpressionLikeQualifiedNameBrand?: any;
@@ -1150,7 +1151,7 @@ namespace ts {
     export interface JsxOpeningElement extends Expression {
         _openingElementBrand?: any;
         tagName: JsxTagNameExpression;
-        attributes: NodeArray<JsxAttribute | JsxSpreadAttribute>;
+        attributes: JsxAttributes;
     }
 
     /// A JSX expression of the form <TagName attrs />
@@ -1168,6 +1169,7 @@ namespace ts {
     export interface JsxAttributes extends ObjectLiteralExpressionBase<JsxAttributeLike> {
         _jsxAttributesBrand: any;
     }
+
     // @kind(SyntaxKind.JsxAttribute)
     export interface JsxAttribute extends ObjectLiteralElementLike {
         name: Identifier;
