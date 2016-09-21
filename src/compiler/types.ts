@@ -303,6 +303,7 @@ namespace ts {
         JsxOpeningElement,
         JsxText,
         JsxClosingElement,
+        JsxAttributes,
         JsxAttribute,
         JsxSpreadAttribute,
         JsxExpression,
@@ -1163,16 +1164,20 @@ namespace ts {
 
     export type JsxAttributeLike = JsxAttribute | JsxSpreadAttribute;
 
+    // @kind(SyntaxKind.JsxAttributes)
+    export interface JsxAttributes extends ObjectLiteralExpressionBase<JsxAttributeLike> {
+        _jsxAttributesBrand: any;
+    }
     // @kind(SyntaxKind.JsxAttribute)
-    export interface JsxAttribute extends Node {
+    export interface JsxAttribute extends ObjectLiteralElementLike {
         name: Identifier;
         /// JSX attribute initializers are optional; <X y /> is sugar for <X y={true} />
         initializer?: StringLiteral | JsxExpression;
     }
 
     // @kind(SyntaxKind.JsxSpreadAttribute)
-    export interface JsxSpreadAttribute extends Node {
-        expression: Expression;
+    export interface JsxSpreadAttribute extends SpreadObjectLiteralAssignment {
+        _jsxSpreadAttributeBrand: any;
     }
 
     // @kind(SyntaxKind.JsxClosingElement)
