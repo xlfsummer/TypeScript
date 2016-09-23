@@ -142,6 +142,7 @@ namespace ts {
                 return visitNodes(cbNodes, (<BindingPattern>node).elements);
             case SyntaxKind.ArrayLiteralExpression:
                 return visitNodes(cbNodes, (<ArrayLiteralExpression>node).elements);
+            case SyntaxKind.JsxAttributes:
             case SyntaxKind.ObjectLiteralExpression:
                 return visitNodes(cbNodes, (<ObjectLiteralExpression>node).properties);
             case SyntaxKind.PropertyAccessExpression:
@@ -193,6 +194,7 @@ namespace ts {
                     visitNode(cbNode, (<ConditionalExpression>node).whenTrue) ||
                     visitNode(cbNode, (<ConditionalExpression>node).colonToken) ||
                     visitNode(cbNode, (<ConditionalExpression>node).whenFalse);
+            case SyntaxKind.JsxSpreadAttribute:
             case SyntaxKind.SpreadElementExpression:
                 return visitNode(cbNode, (<SpreadElementExpression>node).expression);
             case SyntaxKind.Block:
@@ -355,7 +357,7 @@ namespace ts {
             case SyntaxKind.JsxSelfClosingElement:
             case SyntaxKind.JsxOpeningElement:
                 return visitNode(cbNode, (<JsxOpeningLikeElement>node).tagName) ||
-                    visitNodes(cbNodes, (<JsxOpeningLikeElement>node).attributes);
+                    visitNode(cbNode, (<JsxOpeningLikeElement>node).attributes);
             case SyntaxKind.JsxAttribute:
                 return visitNode(cbNode, (<JsxAttribute>node).name) ||
                     visitNode(cbNode, (<JsxAttribute>node).initializer);
@@ -365,7 +367,6 @@ namespace ts {
                 return visitNode(cbNode, (<JsxExpression>node).expression);
             case SyntaxKind.JsxClosingElement:
                 return visitNode(cbNode, (<JsxClosingElement>node).tagName);
-
             case SyntaxKind.JSDocTypeExpression:
                 return visitNode(cbNode, (<JSDocTypeExpression>node).type);
             case SyntaxKind.JSDocUnionType:
@@ -3761,7 +3762,7 @@ namespace ts {
 
             const tagName = parseJsxElementName();
 
-            const attributes = parseList(ParsingContext.JsxAttributes, parseJsxAttribute);
+            const attributes = parseJsxAttributes();
             let node: JsxOpeningLikeElement;
 
             if (token() === SyntaxKind.GreaterThanToken) {
@@ -3825,7 +3826,13 @@ namespace ts {
             return finishNode(node);
         }
 
-        function parseJsxAttribute(): JsxAttribute | JsxSpreadAttribute {
+        function parseJsxAttributes(): JsxAttributes {
+            const node = <JsxAttributes>createNode(SyntaxKind.JsxAttributes);
+            node.properties = parseList(ParsingContext.JsxAttributes, parseJsxAttribute);
+            return finishNode(node);
+        }
+
+        function parseJsxAttribute(): JsxAttributeLike {
             if (token() === SyntaxKind.OpenBraceToken) {
                 return parseJsxSpreadAttribute();
             }
