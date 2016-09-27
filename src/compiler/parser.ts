@@ -74,6 +74,10 @@ namespace ts {
                     visitNode(cbNode, (<ShorthandPropertyAssignment>node).questionToken) ||
                     visitNode(cbNode, (<ShorthandPropertyAssignment>node).equalsToken) ||
                     visitNode(cbNode, (<ShorthandPropertyAssignment>node).objectAssignmentInitializer);
+            case SyntaxKind.SpreadElementExpression:
+                return visitNode(cbNode, (<SpreadElementExpression>node).expression);
+            case SyntaxKind.SpreadTypeElement:
+                return visitNode(cbNode, (node as SpreadTypeElement).type);
             case SyntaxKind.Parameter:
             case SyntaxKind.PropertyDeclaration:
             case SyntaxKind.PropertySignature:
@@ -193,8 +197,8 @@ namespace ts {
                     visitNode(cbNode, (<ConditionalExpression>node).whenTrue) ||
                     visitNode(cbNode, (<ConditionalExpression>node).colonToken) ||
                     visitNode(cbNode, (<ConditionalExpression>node).whenFalse);
-            case SyntaxKind.SpreadElementExpression:
-                return visitNode(cbNode, (<SpreadElementExpression>node).expression);
+            case SyntaxKind.SpreadExpression:
+                return visitNode(cbNode, (<SpreadExpression>node).expression);
             case SyntaxKind.Block:
             case SyntaxKind.ModuleBlock:
                 return visitNodes(cbNodes, (<Block>node).statements);
@@ -1262,7 +1266,7 @@ namespace ts {
                     // which would be a candidate for improved error reporting.
                     return token() === SyntaxKind.OpenBracketToken || isLiteralPropertyName();
                 case ParsingContext.ObjectLiteralMembers:
-                    return token() === SyntaxKind.OpenBracketToken || token() === SyntaxKind.AsteriskToken || isLiteralPropertyName();
+                    return token() === SyntaxKind.OpenBracketToken || token() === SyntaxKind.AsteriskToken || token() === SyntaxKind.DotDotDotToken || isLiteralPropertyName();
                 case ParsingContext.ObjectBindingElements:
                     return token() === SyntaxKind.OpenBracketToken || isLiteralPropertyName();
                 case ParsingContext.HeritageClauseElement:
@@ -2328,6 +2332,10 @@ namespace ts {
             if (token() === SyntaxKind.OpenBracketToken) {
                 return true;
             }
+            // spread elements are type members
+            if (token() === SyntaxKind.DotDotDotToken) {
+                return true;
+            }
             // Try to get the first property-like token following all modifiers
             if (isLiteralPropertyName()) {
                 idToken = token();
@@ -2353,12 +2361,23 @@ namespace ts {
             if (token() === SyntaxKind.NewKeyword && lookAhead(isStartOfConstructSignature)) {
                 return parseSignatureMember(SyntaxKind.ConstructSignature);
             }
+            if (token() === SyntaxKind.DotDotDotToken) {
+                return parseSpreadTypeElement();
+            }
             const fullStart = getNodePos();
             const modifiers = parseModifiers();
             if (isIndexSignature()) {
                 return parseIndexSignatureDeclaration(fullStart, /*decorators*/ undefined, modifiers);
             }
             return parsePropertyOrMethodSignature(fullStart, modifiers);
+        }
+
+        function parseSpreadTypeElement() {
+            const element = createNode(SyntaxKind.SpreadTypeElement, scanner.getStartPos()) as SpreadTypeElement;
+            parseTokenNode<Node>(); // parse `...`
+            element.type = parseType();
+            parseTypeMemberSemicolon();
+            return finishNode(element);
         }
 
         function isStartOfConstructSignature() {
@@ -4082,15 +4101,15 @@ namespace ts {
             return finishNode(node);
         }
 
-        function parseSpreadElement(): Expression {
-            const node = <SpreadElementExpression>createNode(SyntaxKind.SpreadElementExpression);
+        function parseSpreadExpression(): Expression {
+            const node = <SpreadExpression>createNode(SyntaxKind.SpreadExpression);
             parseExpected(SyntaxKind.DotDotDotToken);
             node.expression = parseAssignmentExpressionOrHigher();
             return finishNode(node);
         }
 
         function parseArgumentOrArrayLiteralElement(): Expression {
-            return token() === SyntaxKind.DotDotDotToken ? parseSpreadElement() :
+            return token() === SyntaxKind.DotDotDotToken ? parseSpreadExpression() :
                 token() === SyntaxKind.CommaToken ? <Expression>createNode(SyntaxKind.OmittedExpression) :
                     parseAssignmentExpressionOrHigher();
         }
@@ -4123,6 +4142,12 @@ namespace ts {
 
         function parseObjectLiteralElement(): ObjectLiteralElementLike {
             const fullStart = scanner.getStartPos();
+            const dotDotDotToken = parseOptionalToken(SyntaxKind.DotDotDotToken);
+            if (dotDotDotToken) {
+                const spreadElement = <SpreadElementExpression>createNode(SyntaxKind.SpreadElementExpression, fullStart);
+                spreadElement.expression = parseAssignmentExpressionOrHigher();
+                return addJSDocComment(finishNode(spreadElement));
+            }
             const decorators = parseDecorators();
             const modifiers = parseModifiers();
 

@@ -1063,8 +1063,8 @@ namespace ts {
             }
             else if (node.kind === SyntaxKind.ArrayLiteralExpression) {
                 for (const e of (<ArrayLiteralExpression>node).elements) {
-                    if (e.kind === SyntaxKind.SpreadElementExpression) {
-                        bindAssignmentTargetFlow((<SpreadElementExpression>e).expression);
+                    if (e.kind === SyntaxKind.SpreadExpression) {
+                        bindAssignmentTargetFlow((<SpreadExpression>e).expression);
                     }
                     else {
                         bindDestructuringTargetFlow(e);
@@ -1078,6 +1078,9 @@ namespace ts {
                     }
                     else if (p.kind === SyntaxKind.ShorthandPropertyAssignment) {
                         bindAssignmentTargetFlow((<ShorthandPropertyAssignment>p).name);
+                    }
+                    else if (p.kind === SyntaxKind.SpreadElementExpression) {
+                        bindAssignmentTargetFlow((<SpreadElementExpression>p).expression);
                     }
                 }
             }
@@ -1825,8 +1828,9 @@ namespace ts {
                 case SyntaxKind.EnumMember:
                     return bindPropertyOrMethodOrAccessor(<Declaration>node, SymbolFlags.EnumMember, SymbolFlags.EnumMemberExcludes);
 
+                case SyntaxKind.SpreadElementExpression:
                 case SyntaxKind.JsxSpreadAttribute:
-                    emitFlags |= NodeFlags.HasJsxSpreadAttributes;
+                    emitFlags |= NodeFlags.HasSpreadAttribute;
                     return;
 
                 case SyntaxKind.CallSignature:
@@ -2368,9 +2372,9 @@ namespace ts {
         const expression = node.expression;
         const expressionKind = expression.kind;
 
-        if (subtreeFlags & TransformFlags.ContainsSpreadElementExpression
+        if (subtreeFlags & TransformFlags.ContainsSpreadExpression
             || isSuperOrSuperProperty(expression, expressionKind)) {
-            // If the this node contains a SpreadElementExpression, or is a super call, then it is an ES6
+            // If the this node contains a SpreadExpression, or is a super call, then it is an ES6
             // node.
             transformFlags |= TransformFlags.AssertES6;
         }
@@ -2956,9 +2960,10 @@ namespace ts {
                 }
                 break;
 
+            case SyntaxKind.SpreadExpression:
             case SyntaxKind.SpreadElementExpression:
-                // This node is ES6 syntax, but is handled by a containing node.
-                transformFlags |= TransformFlags.ContainsSpreadElementExpression;
+                // This node is ES6 or ES future syntax, but is handled by a containing node.
+                transformFlags |= TransformFlags.ContainsSpreadExpression;
                 break;
 
             case SyntaxKind.SuperKeyword:
@@ -2996,13 +3001,19 @@ namespace ts {
                     transformFlags |= TransformFlags.ContainsLexicalThis;
                 }
 
+                if (subtreeFlags & TransformFlags.ContainsSpreadExpression) {
+                    // If an ObjectLiteralExpression contains a spread element, then it
+                    // is an ES experimental node.
+                    transformFlags |= TransformFlags.AssertExperimental;
+                }
+
                 break;
 
             case SyntaxKind.ArrayLiteralExpression:
             case SyntaxKind.NewExpression:
                 excludeFlags = TransformFlags.ArrayLiteralOrCallOrNewExcludes;
-                if (subtreeFlags & TransformFlags.ContainsSpreadElementExpression) {
-                    // If the this node contains a SpreadElementExpression, then it is an ES6
+                if (subtreeFlags & TransformFlags.ContainsSpreadExpression) {
+                    // If the this node contains a SpreadExpression, then it is an ES6
                     // node.
                     transformFlags |= TransformFlags.AssertES6;
                 }

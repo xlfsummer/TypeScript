@@ -241,7 +241,7 @@ namespace ts {
         ConditionalExpression,
         TemplateExpression,
         YieldExpression,
-        SpreadElementExpression,
+        SpreadExpression,
         ClassExpression,
         OmittedExpression,
         ExpressionWithTypeArguments,
@@ -316,6 +316,9 @@ namespace ts {
         // Property assignments
         PropertyAssignment,
         ShorthandPropertyAssignment,
+        SpreadElementExpression,
+        SpreadTypeElement,
+
 
         // Enum
         EnumMember,
@@ -412,7 +415,7 @@ namespace ts {
         HasDecorators =      1 << 11, // If the file has decorators (initialized by binding)
         HasParamDecorators = 1 << 12, // If the file has parameter decorators (initialized by binding)
         HasAsyncFunctions =  1 << 13, // If the file has async functions (initialized by binding)
-        HasJsxSpreadAttributes = 1 << 14, // If the file as JSX spread attributes (initialized by binding)
+        HasSpreadAttribute = 1 << 14, // If the file as JSX spread attributes (initialized by binding)
         DisallowInContext =  1 << 15, // If node was parsed in a context where 'in-expressions' are not allowed
         YieldContext =       1 << 16, // If node was parsed in the 'yield' context created when parsing a generator
         DecoratorContext =   1 << 17, // If node was parsed as part of a decorator
@@ -425,7 +428,7 @@ namespace ts {
         BlockScoped = Let | Const,
 
         ReachabilityCheckFlags = HasImplicitReturn | HasExplicitReturn,
-        EmitHelperFlags = HasClassExtends | HasDecorators | HasParamDecorators | HasAsyncFunctions | HasJsxSpreadAttributes,
+        EmitHelperFlags = HasClassExtends | HasDecorators | HasParamDecorators | HasAsyncFunctions | HasSpreadAttribute,
         ReachabilityAndEmitFlags = ReachabilityCheckFlags | EmitHelperFlags,
 
         // Parsing context flags
@@ -450,7 +453,6 @@ namespace ts {
         Async =              1 << 8,  // Property/Method/Function
         Default =            1 << 9,  // Function/Class (export default declaration)
         Const =              1 << 11, // Variable declaration
-
         HasComputedFlags =   1 << 29, // Modifier flags have been computed
 
         AccessibilityModifier = Public | Private | Protected,
@@ -635,6 +637,11 @@ namespace ts {
         initializer?: Expression;           // Optional initializer
     }
 
+    // @kind(SyntaxKind.SpreadTypeElement)
+    export interface SpreadTypeElement extends TypeElement {
+        type: TypeNode;
+    }
+
     // @kind(SyntaxKind.PropertyDeclaration)
     export interface PropertyDeclaration extends ClassElement {
         questionToken?: Node;               // Present for use with reporting a grammar error
@@ -648,7 +655,7 @@ namespace ts {
         name?: PropertyName;
    }
 
-    export type ObjectLiteralElementLike = PropertyAssignment | ShorthandPropertyAssignment | MethodDeclaration | AccessorDeclaration;
+    export type ObjectLiteralElementLike = PropertyAssignment | ShorthandPropertyAssignment | SpreadElementExpression | MethodDeclaration | AccessorDeclaration;
 
     // @kind(SyntaxKind.PropertyAssignment)
     export interface PropertyAssignment extends ObjectLiteralElement {
@@ -666,6 +673,10 @@ namespace ts {
         // it is grammar error to appear in actual object initializer
         equalsToken?: Node;
         objectAssignmentInitializer?: Expression;
+    }
+
+    // @kind(SyntaxKind.SpreadElementExpression)
+    export interface SpreadElementExpression extends ObjectLiteralElement, SpreadExpression {
     }
 
     // SyntaxKind.VariableDeclaration
@@ -1045,8 +1056,8 @@ namespace ts {
         multiLine?: boolean;
     }
 
-    // @kind(SyntaxKind.SpreadElementExpression)
-    export interface SpreadElementExpression extends Expression {
+    // @kind(SyntaxKind.SpreadExpression)
+    export interface SpreadExpression extends Expression {
         expression: Expression;
     }
 
@@ -2288,7 +2299,7 @@ namespace ts {
         instantiations?: Map<Type>;         // Instantiations of generic type alias (undefined if non-generic)
         mapper?: TypeMapper;                // Type mapper for instantiation alias
         referenced?: boolean;               // True if alias symbol has been referenced as a value
-        containingType?: UnionOrIntersectionType; // Containing union or intersection type for synthetic property
+        containingType?: TypeOperatorType; // Containing union or intersection type for synthetic property
         hasCommonType?: boolean;            // True if constituents of synthetic property all have same type
         isDiscriminantProperty?: boolean;   // True if discriminant synthetic property
         resolvedExports?: SymbolTable;      // Resolved exports of module
@@ -2394,6 +2405,8 @@ namespace ts {
         ContainsAnyFunctionType = 1 << 27,  // Type is or contains object literal type
         ThisType                = 1 << 28,  // This type
         ObjectLiteralPatternWithComputedProperties = 1 << 29,  // Object literal type implied by binding pattern has computed properties
+        Spread                  = 1 << 30,  // Spread types
+        // TODO: Move some types out to make room for Spread.
 
         /* @internal */
         Nullable = Undefined | Null,
@@ -2412,12 +2425,12 @@ namespace ts {
         EnumLike = Enum | EnumLiteral,
         ObjectType = Class | Interface | Reference | Tuple | Anonymous,
         UnionOrIntersection = Union | Intersection,
-        StructuredType = ObjectType | Union | Intersection,
+        StructuredType = ObjectType | Union | Intersection | Spread,
         StructuredOrTypeParameter = StructuredType | TypeParameter,
 
         // 'Narrowable' types are types where narrowing actually narrows.
         // This *should* be every type other than null, undefined, void, and never
-        Narrowable = Any | StructuredType | TypeParameter | StringLike | NumberLike | BooleanLike | ESSymbol,
+        Narrowable = Any | StructuredType | TypeParameter | StringLike | NumberLike | BooleanLike | ESSymbol | Spread,
         NotUnionOrUnit = Any | String | Number | ESSymbol | ObjectType,
         /* @internal */
         RequiresWidening = ContainsWideningType | ContainsObjectLiteral,
@@ -2503,7 +2516,7 @@ namespace ts {
         instantiations: Map<TypeReference>;   // Generic instantiation cache
     }
 
-    export interface UnionOrIntersectionType extends Type {
+    export interface TypeOperatorType extends Type {
         types: Type[];                    // Constituent types
         /* @internal */
         resolvedProperties: SymbolTable;  // Cache of resolved properties
@@ -2511,9 +2524,19 @@ namespace ts {
         couldContainTypeParameters: boolean;
     }
 
-    export interface UnionType extends UnionOrIntersectionType { }
+    export interface UnionType extends TypeOperatorType { }
 
-    export interface IntersectionType extends UnionOrIntersectionType { }
+    export interface IntersectionType extends TypeOperatorType { }
+
+    /* @internal */
+    export interface SpreadType extends TypeOperatorType {
+        types: SpreadElementType[];       // Constituent types
+    }
+
+    /* @internal */
+    export interface SpreadElementType extends ResolvedType {
+        isDeclaredProperty: boolean | undefined;
+    }
 
     /* @internal */
     // An instantiated anonymous type has a target and a mapper
@@ -2523,8 +2546,8 @@ namespace ts {
     }
 
     /* @internal */
-    // Resolved object, union, or intersection type
-    export interface ResolvedType extends ObjectType, UnionOrIntersectionType {
+    // Resolved object, spread, union, or intersection type
+    export interface ResolvedType extends ObjectType, TypeOperatorType {
         members: SymbolTable;              // Properties by name
         properties: Symbol[];              // Properties
         callSignatures: Signature[];       // Call signatures of type
@@ -3113,29 +3136,31 @@ namespace ts {
         ContainsTypeScript = 1 << 1,
         Jsx = 1 << 2,
         ContainsJsx = 1 << 3,
-        ES7 = 1 << 4,
-        ContainsES7 = 1 << 5,
-        ES6 = 1 << 6,
-        ContainsES6 = 1 << 7,
-        DestructuringAssignment = 1 << 8,
-        Generator = 1 << 9,
-        ContainsGenerator = 1 << 10,
+        Experimental = 1 << 4,
+        ContainsExperimental = 1 << 5,
+        ES7 = 1 << 6,
+        ContainsES7 = 1 << 7,
+        ES6 = 1 << 8,
+        ContainsES6 = 1 << 9,
+        DestructuringAssignment = 1 << 10,
+        Generator = 1 << 11,
+        ContainsGenerator = 1 << 12,
 
         // Markers
         // - Flags used to indicate that a subtree contains a specific transformation.
-        ContainsDecorators = 1 << 11,
-        ContainsPropertyInitializer = 1 << 12,
-        ContainsLexicalThis = 1 << 13,
-        ContainsCapturedLexicalThis = 1 << 14,
-        ContainsLexicalThisInComputedPropertyName = 1 << 15,
-        ContainsDefaultValueAssignments = 1 << 16,
-        ContainsParameterPropertyAssignments = 1 << 17,
-        ContainsSpreadElementExpression = 1 << 18,
-        ContainsComputedPropertyName = 1 << 19,
-        ContainsBlockScopedBinding = 1 << 20,
-        ContainsBindingPattern = 1 << 21,
-        ContainsYield = 1 << 22,
-        ContainsHoistedDeclarationOrCompletion = 1 << 23,
+        ContainsDecorators = 1 << 13,
+        ContainsPropertyInitializer = 1 << 14,
+        ContainsLexicalThis = 1 << 15,
+        ContainsCapturedLexicalThis = 1 << 16,
+        ContainsLexicalThisInComputedPropertyName = 1 << 17,
+        ContainsDefaultValueAssignments = 1 << 18,
+        ContainsParameterPropertyAssignments = 1 << 19,
+        ContainsSpreadExpression = 1 << 20,
+        ContainsComputedPropertyName = 1 << 21,
+        ContainsBlockScopedBinding = 1 << 22,
+        ContainsBindingPattern = 1 << 23,
+        ContainsYield = 1 << 24,
+        ContainsHoistedDeclarationOrCompletion = 1 << 25,
 
         HasComputedFlags = 1 << 29, // Transform flags have been computed.
 
@@ -3143,6 +3168,7 @@ namespace ts {
         // - Bitmasks that are used to assert facts about the syntax of a node and its subtree.
         AssertTypeScript = TypeScript | ContainsTypeScript,
         AssertJsx = Jsx | ContainsJsx,
+        AssertExperimental = Experimental | ContainsExperimental,
         AssertES7 = ES7 | ContainsES7,
         AssertES6 = ES6 | ContainsES6,
         AssertGenerator = Generator | ContainsGenerator,
@@ -3150,7 +3176,7 @@ namespace ts {
         // Scope Exclusions
         // - Bitmasks that exclude flags from propagating out of a specific context
         //   into the subtree flags of their container.
-        NodeExcludes = TypeScript | Jsx | ES7 | ES6 | DestructuringAssignment | Generator | HasComputedFlags,
+        NodeExcludes = TypeScript | Jsx | Experimental | ES7 | ES6 | DestructuringAssignment | Generator | HasComputedFlags,
         ArrowFunctionExcludes = NodeExcludes | ContainsDecorators | ContainsDefaultValueAssignments | ContainsLexicalThis | ContainsParameterPropertyAssignments | ContainsBlockScopedBinding | ContainsYield | ContainsHoistedDeclarationOrCompletion,
         FunctionExcludes = NodeExcludes | ContainsDecorators | ContainsDefaultValueAssignments | ContainsCapturedLexicalThis | ContainsLexicalThis | ContainsParameterPropertyAssignments | ContainsBlockScopedBinding | ContainsYield | ContainsHoistedDeclarationOrCompletion,
         ConstructorExcludes = NodeExcludes | ContainsDefaultValueAssignments | ContainsLexicalThis | ContainsCapturedLexicalThis | ContainsBlockScopedBinding | ContainsYield | ContainsHoistedDeclarationOrCompletion,
@@ -3159,7 +3185,7 @@ namespace ts {
         ModuleExcludes = NodeExcludes | ContainsDecorators | ContainsLexicalThis | ContainsCapturedLexicalThis | ContainsBlockScopedBinding | ContainsHoistedDeclarationOrCompletion,
         TypeExcludes = ~ContainsTypeScript,
         ObjectLiteralExcludes = NodeExcludes | ContainsDecorators | ContainsComputedPropertyName | ContainsLexicalThisInComputedPropertyName,
-        ArrayLiteralOrCallOrNewExcludes = NodeExcludes | ContainsSpreadElementExpression,
+        ArrayLiteralOrCallOrNewExcludes = NodeExcludes | ContainsSpreadExpression,
         VariableDeclarationListExcludes = NodeExcludes | ContainsBindingPattern,
         ParameterExcludes = NodeExcludes | ContainsBindingPattern,
 
