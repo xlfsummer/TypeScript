@@ -304,6 +304,7 @@ namespace ts {
         JsxText,
         JsxClosingElement,
         JsxAttribute,
+        JsxAttributes,
         JsxSpreadAttribute,
         JsxExpression,
 
@@ -1149,14 +1150,22 @@ namespace ts {
         closingElement: JsxClosingElement;
     }
 
+    /// Either the opening tag in a <Tag>...</Tag> pair, or the lone <Tag /> in a self-closing form
+    export type JsxOpeningLikeElement = JsxSelfClosingElement | JsxOpeningElement;
+
+    export type JsxAttributeLike = JsxAttribute | JsxSpreadAttribute;
+
     export type JsxTagNameExpression = PrimaryExpression | PropertyAccessExpression;
+
+    export interface JsxAttributes extends ObjectLiteralExpressionBase<JsxAttributeLike> {
+    }
 
     /// The opening element of a <Tag>...</Tag> JsxElement
     // @kind(SyntaxKind.JsxOpeningElement)
     export interface JsxOpeningElement extends Expression {
         _openingElementBrand?: any;
         tagName: JsxTagNameExpression;
-        attributes: NodeArray<JsxAttribute | JsxSpreadAttribute>;
+        attributes: JsxAttributes;
     }
 
     /// A JSX expression of the form <TagName attrs />
@@ -1165,20 +1174,15 @@ namespace ts {
         _selfClosingElementBrand?: any;
     }
 
-    /// Either the opening tag in a <Tag>...</Tag> pair, or the lone <Tag /> in a self-closing form
-    export type JsxOpeningLikeElement = JsxSelfClosingElement | JsxOpeningElement;
-
-    export type JsxAttributeLike = JsxAttribute | JsxSpreadAttribute;
-
     // @kind(SyntaxKind.JsxAttribute)
-    export interface JsxAttribute extends Node {
+    export interface JsxAttribute extends ObjectLiteralElement {
         name: Identifier;
         /// JSX attribute initializers are optional; <X y /> is sugar for <X y={true} />
         initializer?: StringLiteral | JsxExpression;
     }
 
     // @kind(SyntaxKind.JsxSpreadAttribute)
-    export interface JsxSpreadAttribute extends Node {
+    export interface JsxSpreadAttribute extends SpreadElementExpression {
         expression: Expression;
     }
 
