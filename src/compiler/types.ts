@@ -1121,7 +1121,7 @@ namespace ts {
         template: Template;
     }
 
-    export type CallLikeExpression = CallExpression | NewExpression | TaggedTemplateExpression | Decorator;
+    export type CallLikeExpression = CallExpression | NewExpression | TaggedTemplateExpression | Decorator | JsxOpeningLikeElement;
 
     // @kind(SyntaxKind.AsExpression)
     export interface AsExpression extends Expression {
