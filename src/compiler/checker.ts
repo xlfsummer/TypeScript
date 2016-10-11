@@ -104,7 +104,7 @@ namespace ts {
             getExportsOfModule: getExportsOfModuleAsArray,
             getAmbientModules,
 
-            getJsxElementAttributesType,
+            getAttributesTypeFromJsxOpeningLikeElement,
             getJsxIntrinsicTagNames,
             isOptionalParameter
         };
@@ -10145,7 +10145,7 @@ namespace ts {
         function getContextualTypeForJsxAttribute(attribute: JsxAttribute | JsxSpreadAttribute) {
             const kind = attribute.kind;
             const jsxElement = attribute.parent.parent as JsxOpeningLikeElement;
-            const attrsType = getJsxElementAttributesType(jsxElement);
+            const attrsType = getAttributesTypeFromJsxOpeningLikeElement(jsxElement);
 
             if (attribute.kind === SyntaxKind.JsxAttribute) {
                 if (!attrsType || isTypeAny(attrsType)) {
@@ -10781,7 +10781,7 @@ namespace ts {
         function checkJsxAttributes(openingLikeElement: JsxOpeningLikeElement) {
             // Get target attributes type from resolving opening-element
             // Check if given attributes (openingLikeELement.attributes) are compatible with the given attributes
-            const targetAttributesType = getJsxElementAttributesType(openingLikeElement);
+            const targetAttributesType = getAttributesTypeFromJsxOpeningLikeElement(openingLikeElement);
             const sourceAttribtuesType = resolvedJsxAttributesTypeFromOpeningLikeElement(openingLikeElement);
             const nameTable = createMap<boolean>();
             // Process this array in right-to-left order so we know which
@@ -10990,7 +10990,7 @@ namespace ts {
         }
 
         /**
-         * Resolve attributes type of the given node. The function is intended to initally be called from getJsxElementAttributesType which already handle JSX-intrinsic-element.
+         * Resolve attributes type of the given node. The function is intended to initally be called from getAttributesTypeFromJsxOpeningLikeElement which already handle JSX-intrinsic-element.
          * @param openingLikeElement a non-instrinsic JSXOPeningLikeElement
          * @param elementType an instance type of the given node
          * @param elementClassType a JSX-ElementClass type. This is a result of looking up ElementClass interface in the JSX global (imported from react.d.ts)
@@ -11115,35 +11115,37 @@ namespace ts {
         }
 
         /**
-         *
-         * @param node
+         * Get attributes type of the given intrinsic opening-like Jsx element by resolving the tag name.
+         * The function is intended to be called from a function which has checked that the opening element is an intrinsic element.
+         * @param node an intrinsic JSX oopening-like element
          */
-        function getIntrinsicJsxElementAttributesType(node: JsxOpeningElement): Type {
+        function getIntrinsicAttributesTypeFromJsxOpeningLikeElement(node: JsxOpeningLikeElement): Type {
             const links = getNodeLinks(node);
             if (!links.resolvedJsxElementAttributesType) {
-                if (isJsxIntrinsicIdentifier(node.tagName)) {
-                    const symbol = getIntrinsicTagSymbol(node);
-                    if (links.jsxFlags & JsxFlags.IntrinsicNamedElement) {
-                        return links.resolvedJsxElementAttributesType = getTypeOfSymbol(symbol);
-                    }
-                    else if (links.jsxFlags & JsxFlags.IntrinsicIndexedElement) {
-                        return links.resolvedJsxElementAttributesType = getIndexInfoOfSymbol(symbol, IndexKind.String).type;
-                    }
-                    else {
-                        return links.resolvedJsxElementAttributesType = unknownType;
-                    }
+                const symbol = getIntrinsicTagSymbol(node);
+                if (links.jsxFlags & JsxFlags.IntrinsicNamedElement) {
+                    return links.resolvedJsxElementAttributesType = getTypeOfSymbol(symbol);
+                }
+                else if (links.jsxFlags & JsxFlags.IntrinsicIndexedElement) {
+                    return links.resolvedJsxElementAttributesType = getIndexInfoOfSymbol(symbol, IndexKind.String).type;
+                }
+                else {
+                    return links.resolvedJsxElementAttributesType = unknownType;
                 }
             }
             return links.resolvedJsxElementAttributesType;
         }
 
-        function getCustomJsxElementAttributesType(node: JsxOpeningElement): Type {
+        /**
+         * Get attributes type of the given custom opening-like Jsx element.
+         * The function is intended to be called from a function which has handle intrinsic Jsx element.
+         * @param node a custom Jsx opening-like element
+         */
+        function getCustomJsxElementAttributesType(node: JsxOpeningLikeElement): Type {
             const links = getNodeLinks(node);
             if (!links.resolvedJsxElementAttributesType) {
-                if (!isJsxIntrinsicIdentifier(node.tagName)) {
-                    const elemClassType = getJsxGlobalElementClassType();
-                    return links.resolvedJsxElementAttributesType = resolveJsxElementAttributesType(node, undefined, elemClassType);
-                }
+                const elemClassType = getJsxGlobalElementClassType();
+                return links.resolvedJsxElementAttributesType = resolveJsxElementAttributesType(node, undefined, elemClassType);
             }
             return links.resolvedJsxElementAttributesType;
         }
@@ -11153,9 +11155,13 @@ namespace ts {
          * @param node a JSXOpeningLikeElement node
          * @return an attributes type of the given node
          */
-        function getJsxElementAttributesType(node: JsxOpeningLikeElement): Type {
-            const intrinsicAttributesType = getIntrinsicJsxElementAttributesType(node);
-            return intrinsicAttributesType ? intrinsicAttributesType : getCustomJsxElementAttributesType(node);
+        function getAttributesTypeFromJsxOpeningLikeElement(node: JsxOpeningLikeElement): Type {
+            if (isJsxIntrinsicIdentifier(node.tagName)) {
+                return getIntrinsicAttributesTypeFromJsxOpeningLikeElement(node);
+            }
+            else {
+                return getCustomJsxElementAttributesType(node);
+            }
         }
 
         /**
@@ -11164,7 +11170,7 @@ namespace ts {
          * that have no matching element attributes type property.
          */
         function getJsxAttributePropertySymbol(attrib: JsxAttribute): Symbol {
-            const attributesType = getJsxElementAttributesType(attrib.parent.parent as JsxOpeningElement);
+            const attributesType = getAttributesTypeFromJsxOpeningLikeElement(attrib.parent.parent as JsxOpeningElement);
             const prop = getPropertyOfType(attributesType, attrib.name.text);
             return prop || unknownSymbol;
         }
