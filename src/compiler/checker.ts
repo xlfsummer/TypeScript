@@ -6868,9 +6868,14 @@ namespace ts {
                                 // Use this property as the error node as this will be more helpful in
                                 // reasoning about what went wrong.
                                 Debug.assert(!!errorNode);
-                                errorNode = prop.valueDeclaration;
-                                reportError(Diagnostics.Object_literal_may_only_specify_known_properties_and_0_does_not_exist_in_type_1,
-                                    symbolToString(prop), typeToString(target));
+                                if (isJsxAttributes(errorNode)) {
+                                    reportError(Diagnostics.Property_0_does_not_exist_on_type_1, symbolToString(prop), typeToString(target));
+                                }
+                                else {
+                                    errorNode = prop.valueDeclaration;
+                                    reportError(Diagnostics.Object_literal_may_only_specify_known_properties_and_0_does_not_exist_in_type_1,
+                                        symbolToString(prop), typeToString(target));
+                                }
                             }
                             return true;
                         }
@@ -10700,18 +10705,17 @@ namespace ts {
         function isJsxAttribute(node: Node): node is JsxAttribute {
             return node.kind === SyntaxKind.JsxAttribute;
         }
+
         /**
-         * Resolee the type of attributes in the given attributes in opening-like element.
-         * Unlike "getJsxElementAttributesType" which get type of attributes type from
-         *  resolving jsxopeningLikeElement's tagName
+         * Get attributes symbol of the given Jsx opening-like element. The result is from resolving "attributes" property of the opening-like element.
+         * @param openingLikeElement a Jsx opening-like element
+         * @return a symbol table resulted from resolving "attributes" property or undefined if any of the attribute resolved to any or there is no attributes.
          */
-        function resolvedJsxAttributesTypeFromOpeningLikeElement(openingLikeElement: JsxOpeningLikeElement) {
-            let attributesTable = createMap<Symbol>();
-            let attributesArray: Symbol[] = [];
-            const spreads: SpreadElementType[] = [];
-
+        function getAttributesSymbolTableOfJsxOpeningLikeElement(openingLikeElement: JsxOpeningElement): Map<Symbol> | undefined {
             const attributes = openingLikeElement.attributes;
-
+            let attributesTable = createMap<Symbol>();
+            const spreads: SpreadElementType[] = [];
+            let attributesArray: Symbol[] = [];
             for (const attributeDecl of attributes.properties) {
                 const member = attributeDecl.symbol;
                 if (isJsxAttribute(attributeDecl)) {
@@ -10732,25 +10736,29 @@ namespace ts {
                     }
                     attributeSymbol.type = exprType;
                     attributeSymbol.target = member;
-                    attributesTable[member.name] = member;
-                    attributesArray.push(member);
+                    attributesTable[attributeSymbol.name] = attributeSymbol;
+                    attributesArray.push(attributeSymbol);
                 }
                 else {
                     Debug.assert(attributeDecl.kind === SyntaxKind.JsxSpreadAttribute);
                     if (attributesArray.length > 0) {
-                        const t = createObjectLiteralType() as SpreadElementType;
+                        const t = createJsxAttributesType(attributes, attributesTable) as SpreadElementType;
                         t.isDeclaredProperty = true;
                         spreads.push(t);
                         attributesArray = [];
                         attributesTable = createMap<Symbol>();
                     }
-                    spreads.push(checkExpression(attributeDecl.expression) as SpreadElementType);
+                    const exprType = checkExpression(attributeDecl.expression);
+                    if (isTypeAny(exprType)) {
+                        return undefined;
+                    }
+                    spreads.push(exprType as SpreadElementType);
                 }
             }
 
             if (spreads.length > 0) {
                 if (attributesArray.length > 0) {
-                    const t = createObjectLiteralType() as SpreadElementType;
+                    const t = createJsxAttributesType(attributes, attributesTable) as SpreadElementType;
                     t.isDeclaredProperty = true;
                     spreads.push(t);
                 }
@@ -10764,13 +10772,47 @@ namespace ts {
                 })
             }
 
-            return createObjectLiteralType();
-            function createObjectLiteralType() {
-                const result = createAnonymousType(attributes.symbol, attributesTable, emptyArray, emptyArray, /*stringIndexInfo*/ undefined, /*numberIndexInfo*/ undefined);
-                const freshObjectLiteralFlag = compilerOptions.suppressExcessPropertyErrors ? 0 : TypeFlags.FreshLiteral;
-                result.flags |= TypeFlags.ObjectLiteral | TypeFlags.ContainsObjectLiteral | freshObjectLiteralFlag;
-                return result;
+            return attributesTable;
+        }
+
+        /**
+         * Create ananoymous type from given attributes symbol table.
+         * @param jsxAttributes a JsxAttributes node containing attributes in attributesTable
+         * @param attributesTable a symbol table of attributes property
+         */
+        function createJsxAttributesType(jsxAttributes: JsxAttributes, attributesTable: Map<Symbol>) {
+            const result = createAnonymousType(jsxAttributes.symbol, attributesTable, emptyArray, emptyArray, /*stringIndexInfo*/ undefined, /*numberIndexInfo*/ undefined);
+            const freshObjectLiteralFlag = compilerOptions.suppressExcessPropertyErrors ? 0 : TypeFlags.FreshLiteral;
+            result.flags |= TypeFlags.ObjectLiteral | TypeFlags.ContainsObjectLiteral | freshObjectLiteralFlag;
+            return result;
+        }
+
+        function resolveCustomJsxElementAttributesTypeFromOpeningLikeElement(openingLikeElement: JsxOpeningLikeElement) {
+            const symbolTable = getAttributesSymbolTableOfJsxOpeningLikeElement(openingLikeElement);
+            return createJsxAttributesType(openingLikeElement.attributes, symbolTable);
+        }
+ 
+        /**
+         * Check attributes type of intrinsic JSx opening-like element.
+         * The function is intended to be called from checkJsxAttributes which has already check the the opening-like element is an intrinsic element.
+         * @param openingLikeElement an intrinsic Jsx opening-like element
+         */
+        function checkAttributesTypeOfIntrinsicJsxOpeningLikeElement(openingLikeElement: JsxOpeningLikeElement) {
+            const targetAttributesType = getIntrinsicAttributesTypeFromJsxOpeningLikeElement(openingLikeElement);
+            const symbolTable = getAttributesSymbolTableOfJsxOpeningLikeElement(openingLikeElement);
+            // Filter out any hyphenated names as those are not play any role in type-checking unless there are corresponding properties in the target type
+            let attributesTable: Map<Symbol>;
+            let sourceAttributesType = anyType as Type;
+            if (symbolTable) {
+                attributesTable = createMap<Symbol>();
+                for (const key in symbolTable) {
+                    if (isUnhyphenatedJsxName(key) || getPropertyOfType(targetAttributesType, key)) {
+                        attributesTable[key] = symbolTable[key];
+                    }
+                }
+                sourceAttributesType = createJsxAttributesType(openingLikeElement.attributes, attributesTable);
             }
+            checkTypeAssignableTo(sourceAttributesType, targetAttributesType, openingLikeElement.attributes.properties.length > 0 ? openingLikeElement.attributes : openingLikeElement);
         }
 
         /**
@@ -10781,36 +10823,41 @@ namespace ts {
         function checkJsxAttributes(openingLikeElement: JsxOpeningLikeElement) {
             // Get target attributes type from resolving opening-element
             // Check if given attributes (openingLikeELement.attributes) are compatible with the given attributes
-            const targetAttributesType = getAttributesTypeFromJsxOpeningLikeElement(openingLikeElement);
-            const sourceAttribtuesType = resolvedJsxAttributesTypeFromOpeningLikeElement(openingLikeElement);
-            const nameTable = createMap<boolean>();
-            // Process this array in right-to-left order so we know which
-            // attributes (mostly from spreads) are being overwritten and
-            // thus should have their types ignored
-            let sawSpreadedAny = false;
-            const attributes = openingLikeElement.attributes.properties;
-            for (let i = attributes.length - 1; i >= 0; i--) {
-                if (attributes[i].kind === SyntaxKind.JsxAttribute) {
-                    checkJsxAttribute(<JsxAttribute>(attributes[i]), targetAttributesType, nameTable);
-                }
-                else {
-                    Debug.assert(attributes[i].kind === SyntaxKind.JsxSpreadAttribute);
-                    const spreadType = checkJsxSpreadAttribute(<JsxSpreadAttribute>(attributes[i]), targetAttributesType, nameTable);
-                    if (isTypeAny(spreadType)) {
-                        sawSpreadedAny = true;
+            if (isJsxIntrinsicIdentifier(openingLikeElement.tagName)) {
+                checkAttributesTypeOfIntrinsicJsxOpeningLikeElement(openingLikeElement);
+            }
+            else {
+                const targetAttributesType = getAttributesTypeFromJsxOpeningLikeElement(openingLikeElement);
+                const sourceAttribtuesType = resolveCustomJsxElementAttributesTypeFromOpeningLikeElement(openingLikeElement);
+                const nameTable = createMap<boolean>();
+                // Process this array in right-to-left order so we know which
+                // attributes (mostly from spreads) are being overwritten and
+                // thus should have their types ignored
+                let sawSpreadedAny = false;
+                const attributes = openingLikeElement.attributes.properties;
+                for (let i = attributes.length - 1; i >= 0; i--) {
+                    if (attributes[i].kind === SyntaxKind.JsxAttribute) {
+                        checkJsxAttribute(<JsxAttribute>(attributes[i]), targetAttributesType, nameTable);
+                    }
+                    else {
+                        Debug.assert(attributes[i].kind === SyntaxKind.JsxSpreadAttribute);
+                        const spreadType = checkJsxSpreadAttribute(<JsxSpreadAttribute>(attributes[i]), targetAttributesType, nameTable);
+                        if (isTypeAny(spreadType)) {
+                            sawSpreadedAny = true;
+                        }
                     }
                 }
-            }
 
-            // Check that all required properties have been provided. If an 'any'
-            // was spreaded in, though, assume that it provided all required properties
-            if (targetAttributesType && !sawSpreadedAny) {
-                const targetProperties = getPropertiesOfType(targetAttributesType);
-                for (let i = 0; i < targetProperties.length; i++) {
-                    if (!(targetProperties[i].flags & SymbolFlags.Optional) &&
-                        !nameTable[targetProperties[i].name]) {
+                // Check that all required properties have been provided. If an 'any'
+                // was spreaded in, though, assume that it provided all required properties
+                if (targetAttributesType && !sawSpreadedAny) {
+                    const targetProperties = getPropertiesOfType(targetAttributesType);
+                    for (let i = 0; i < targetProperties.length; i++) {
+                        if (!(targetProperties[i].flags & SymbolFlags.Optional) &&
+                            !nameTable[targetProperties[i].name]) {
 
-                        error(openingLikeElement, Diagnostics.Property_0_is_missing_in_type_1, targetProperties[i].name, typeToString(targetAttributesType));
+                            error(openingLikeElement, Diagnostics.Property_0_is_missing_in_type_1, targetProperties[i].name, typeToString(targetAttributesType));
+                        }
                     }
                 }
             }
@@ -20390,6 +20437,7 @@ namespace ts {
 
         function checkGrammarJsxElement(node: JsxOpeningLikeElement) {
             const seen = createMap<boolean>();
+
             for (const attr of node.attributes.properties) {
                 if (attr.kind === SyntaxKind.JsxSpreadAttribute) {
                     continue;
