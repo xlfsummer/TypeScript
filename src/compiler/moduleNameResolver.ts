@@ -82,6 +82,9 @@ namespace ts {
 
     const typeReferenceExtensions = [".d.ts"];
 
+    /**
+     * Returns a list of directories containing typings, or undefined if none could be found.
+     */
     export function getEffectiveTypeRoots(options: CompilerOptions, host: { directoryExists?: (directoryName: string) => boolean, getCurrentDirectory?: () => string }): string[] | undefined {
         if (options.typeRoots) {
             return options.typeRoots;

@@ -617,13 +617,14 @@ namespace ts.Completions {
                 let typeRoots: string[];
                 try {
                     // Wrap in try catch because getEffectiveTypeRoots touches the filesystem
+                    // TODO: (arozga) Why aren't other callers similarly concerned?
                     typeRoots = getEffectiveTypeRoots(options, host);
                 }
                 catch (e) {}
 
                 if (typeRoots) {
-                    for (const root of typeRoots) {
-                        getCompletionEntriesFromDirectories(host, options, root, span, result);
+                    for (const rootDir of typeRoots) {
+                        getCompletionEntriesFromDirectories(host, options, rootDir, span, result);
                     }
                 }
             }
