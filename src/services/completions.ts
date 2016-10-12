@@ -267,15 +267,16 @@ namespace ts.Completions {
             const scriptDirectory = getDirectoryPath(scriptPath);
 
             const span = getDirectoryFragmentTextSpan((<StringLiteral>node).text, node.getStart() + 1);
-            let entries: CompletionEntry[];
-            if (isPathRelativeToScript(literalValue) || isRootedDiskPath(literalValue)) {
+            let entries: CompletionEntry[] = [];
+            if (isRelativeImport(literalValue)) {
+            // if (isPathRelativeToScript(literalValue) || isRootedDiskPath(literalValue)) {
                 if (compilerOptions.rootDirs) {
                     entries = getCompletionEntriesForDirectoryFragmentWithRootDirs(
                         compilerOptions.rootDirs, literalValue, scriptDirectory, getSupportedExtensions(compilerOptions), /*includeExtensions*/false, span, scriptPath);
                 }
                 else {
-                    entries = getCompletionEntriesForDirectoryFragment(
-                        literalValue, scriptDirectory, getSupportedExtensions(compilerOptions), /*includeExtensions*/false, span, scriptPath);
+                    getCompletionEntriesForDirectoryFragment(
+                        literalValue, scriptDirectory, getSupportedExtensions(compilerOptions), /*includeExtensions*/false, span, scriptPath, entries);
                 }
             }
             else {
@@ -326,9 +327,13 @@ namespace ts.Completions {
         }
 
         /**
-         * Given a path ending at a directory, gets the completions for the path, and filters for those entries containing the basename.
+         * Given a path fragment, gets completion entries for the corresponding directory, and appends them to result.
+         * @param fragment Path fragment pointing to the desired directory. Either absolute or relative to scriptPath.
+         * @param scriptPath Path pointing to the directory where the requesting script is located.
+         * @param span Span of the item to be completed.
+         * @param result Any completions found are pushed into result. Existing entries are unmodified.
          */
-        function getCompletionEntriesForDirectoryFragment(fragment: string, scriptPath: string, extensions: string[], includeExtensions: boolean, span: TextSpan, exclude?: string, result: CompletionEntry[] = []): CompletionEntry[] {
+        function getCompletionEntriesForDirectoryFragment(fragment: string, scriptPath: string, extensions: string[], includeExtensions: boolean, span: TextSpan, exclude?: string, result: CompletionEntry[] = []): void {
             if (fragment === undefined) {
                 fragment = "";
             }
@@ -392,8 +397,6 @@ namespace ts.Completions {
                     }
                 }
             }
-
-            return result;
         }
 
         /**
@@ -406,13 +409,22 @@ namespace ts.Completions {
         function getCompletionEntriesForNonRelativeModules(fragment: string, scriptPath: string, span: TextSpan): CompletionEntry[] {
             const { baseUrl, paths } = compilerOptions;
 
-            let result: CompletionEntry[];
+            let result: CompletionEntry[] = [];
 
+            // TODO: (arozga) Should we have separate methods for classic mode and 
+
+            // resolution strategy should change if we are in "classic" or "node" mode.
+
+            // modules found by the type checker
+
+            // modules found relative to baseUrl
+
+            // modules listed in package.json
             if (baseUrl) {
                 const fileExtensions = getSupportedExtensions(compilerOptions);
                 const projectDir = compilerOptions.project || host.getCurrentDirectory();
                 const absolute = isRootedDiskPath(baseUrl) ? baseUrl : combinePaths(projectDir, baseUrl);
-                result = getCompletionEntriesForDirectoryFragment(fragment, normalizePath(absolute), fileExtensions, /*includeExtensions*/false, span);
+                getCompletionEntriesForDirectoryFragment(fragment, normalizePath(absolute), fileExtensions, /*includeExtensions*/false, span, /*exclude*/undefined, result);
 
                 if (paths) {
                     for (const path in paths) {
@@ -435,9 +447,6 @@ namespace ts.Completions {
                         }
                     }
                 }
-            }
-            else {
-                result = [];
             }
 
             getCompletionEntriesFromTypings(host, compilerOptions, scriptPath, span, result);
@@ -586,7 +595,7 @@ namespace ts.Completions {
                 if (kind === "path") {
                     // Give completions for a relative path
                     const span: TextSpan = getDirectoryFragmentTextSpan(toComplete, range.pos + prefix.length);
-                    completionInfo.entries = getCompletionEntriesForDirectoryFragment(toComplete, scriptPath, getSupportedExtensions(compilerOptions), /*includeExtensions*/true, span, sourceFile.path);
+                    getCompletionEntriesForDirectoryFragment(toComplete, scriptPath, getSupportedExtensions(compilerOptions), /*includeExtensions*/true, span, sourceFile.path, completionInfo.entries);
                 }
                 else {
                     // Give completions based on the typings available
@@ -727,6 +736,14 @@ namespace ts.Completions {
             const index = text.lastIndexOf(directorySeparator);
             const offset = index !== -1 ? index + 1 : 0;
             return { start: textStart + offset, length: text.length - offset };
+        }
+
+        /**
+         * Returns true iff the path begins with one of '/' ,'./', '../'.
+         */
+        function isRelativeImport(path: string): boolean {
+
+            return !!relativeImportRegex.exec(path);
         }
 
         // Returns true if the path is explicitly relative to the script (i.e. relative to . or ..)
@@ -1698,9 +1715,9 @@ namespace ts.Completions {
     }
 
     /**
-     * Matches a triple slash reference directive with an incomplete string literal for its path. Used
-     * to determine if the caret is currently within the string literal and capture the literal fragment
-     * for completions.
+     * Matches a triple slash reference directive with an incomplete string literal for its path (aka the fragment). Used
+     * to determine if the caret is currently writing the fragment. Captures the prefix, the type of reference directive,
+     * and the fragment.
      * For example, this matches
      * 
      * /// <reference path="fragment
@@ -1710,6 +1727,13 @@ namespace ts.Completions {
      * /// <reference path="fragment"
      */
     const tripleSlashDirectiveFragmentRegex = /^(\/\/\/\s*<reference\s+(path|types)\s*=\s*(?:'|"))([^\3"]*)$/;
+
+    /**
+     * Matches string literals which specify relative imports, and no other strings.
+     * Relative imports are strings beginning with
+     * '/', './', or '../'.
+     */
+    const relativeImportRegex = /^(\/|.\/|..\/)/;
 
     interface VisibleModuleInfo {
         moduleName: string;
