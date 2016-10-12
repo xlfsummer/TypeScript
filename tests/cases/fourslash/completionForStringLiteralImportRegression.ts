@@ -31,12 +31,12 @@
 // @Filename: tsconfig.json
 
 
+goTo.marker("1");
+verify.completionListContains("provide");
+verify.completionListContains(".vscode");
+verify.not.completionListItemsCountIsGreaterThan(2);
+
 goTo.marker("0");
 verify.completionListContains("provide");
-verify.not.completionListItemsCountIsGreaterThan(1);
-//verify.completionListContains(".vscode");
-//verify.not.completionListItemsCountIsGreaterThan(2);
-
-goTo.marker("2");
-verify.completionListContains("provide");
-verify.not.completionListItemsCountIsGreaterThan(1);
+verify.completionListContains(".vscode");
+verify.not.completionListItemsCountIsGreaterThan(2);

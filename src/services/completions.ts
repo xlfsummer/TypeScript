@@ -269,7 +269,6 @@ namespace ts.Completions {
             const span = getDirectoryFragmentTextSpan((<StringLiteral>node).text, node.getStart() + 1);
             let entries: CompletionEntry[] = [];
             if (isRelativeImport(literalValue)) {
-            // if (isPathRelativeToScript(literalValue) || isRootedDiskPath(literalValue)) {
                 if (compilerOptions.rootDirs) {
                     entries = getCompletionEntriesForDirectoryFragmentWithRootDirs(
                         compilerOptions.rootDirs, literalValue, scriptDirectory, getSupportedExtensions(compilerOptions), /*includeExtensions*/false, span, scriptPath);
