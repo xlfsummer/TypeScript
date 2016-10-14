@@ -16,7 +16,7 @@ interface Obj2type {
 	new(n: string): { q?: number; pr: any };
 }
 var Obj2: Obj2type;
-<Obj2 x={10} />; // Error
+<Obj2 x={10} />; // OK
 
 interface Obj3type {
 	new(n: string): { x: number; };

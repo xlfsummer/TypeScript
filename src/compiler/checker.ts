@@ -11079,7 +11079,10 @@ namespace ts {
                 // assignable to the JSX Element Type
                 if (jsxElementType) {
                     // TODO (yuisu) : comment
-                    const callSignature = getResolvedSignature(openingLikeElement);
+                    const links = getNodeLinks(openingLikeElement);
+                    const callSignature = resolveStateLessJsxOpeningLikeElement(openingLikeElement, elementType, /*candidatesOutArray*/ undefined);
+                    links.resolvedSignature = callSignature;
+                    //const callSignature = getResolvedSignature(openingLikeElement);
                     const callReturnType = callSignature && getReturnTypeOfSignature(callSignature);
                     let paramType = callReturnType && (callSignature.parameters.length === 0 ? emptyObjectType : getTypeOfSymbol(callSignature.parameters[0]));
                     if (callReturnType && isTypeAssignableTo(callReturnType, jsxElementType)) {
@@ -12880,8 +12883,18 @@ namespace ts {
          * @param node
          * @param candidatesOutArray
          */
-        function resolveStateLessJsxOpeningLikeElement(node: JsxOpeningLikeElement, candidatesOutArray: Signature[]): Signature | undefined {
-            const elementType = checkExpression(node.tagName);
+        function resolveStateLessJsxOpeningLikeElement(node: JsxOpeningLikeElement, elementType: Type, candidatesOutArray: Signature[]): Signature | undefined {
+            if (elementType.flags & TypeFlags.Union) {
+                const types = (<TypeOperatorType>elementType).types;
+                let result: Signature;
+                types.map(type => {
+                    // This is mainly to fill in all the candidates if there is one.
+                    result = result || resolveStateLessJsxOpeningLikeElement(node, type, candidatesOutArray);
+                });
+
+                return result;
+            }
+
             const callSignatures = elementType && getSignaturesOfType(elementType, SignatureKind.Call);
 
             if (callSignatures && callSignatures.length > 0) {
@@ -12905,7 +12918,7 @@ namespace ts {
                     return resolveDecorator(<Decorator>node, candidatesOutArray);
                 case SyntaxKind.JsxOpeningElement:
                 case SyntaxKind.JsxSelfClosingElement:
-                    return resolveStateLessJsxOpeningLikeElement(<JsxOpeningLikeElement>node, candidatesOutArray);
+                    return resolveStateLessJsxOpeningLikeElement(<JsxOpeningLikeElement>node, checkExpression((<JsxOpeningLikeElement>node).tagName), candidatesOutArray);
             }
             Debug.fail("Branch in 'resolveSignature' should be unreachable.");
         }
