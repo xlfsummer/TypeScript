@@ -6834,7 +6834,8 @@ namespace ts {
             function isKnownProperty(type: Type, name: string): boolean {
                 if (type.flags & TypeFlags.ObjectType) {
                     const resolved = resolveStructuredTypeMembers(type);
-                    if ((relation === assignableRelation || relation === comparableRelation) && (type === globalObjectType || isEmptyObjectType(resolved)) ||
+                    if ((relation === assignableRelation || relation === comparableRelation) &&
+                        (type === globalObjectType || isEmptyObjectType(resolved)) ||
                         resolved.stringIndexInfo ||
                         (resolved.numberIndexInfo && isNumericLiteralName(name)) ||
                         getPropertyOfType(type, name)) {
@@ -10786,7 +10787,7 @@ namespace ts {
             result.flags |= TypeFlags.ObjectLiteral | TypeFlags.ContainsObjectLiteral | freshObjectLiteralFlag;
             return result;
         }
- 
+
         /**
          * Check attributes type of intrinsic JSx opening-like element.
          * The function is intended to be called from checkJsxAttributes which has already check the the opening-like element is an intrinsic element.
@@ -10814,29 +10815,40 @@ namespace ts {
          *  Check the attributes of the given JsxOpeningLikeElement.
          *      Resolve the type of attributes of the openingLikeElement
          *      Compare if the given attributes assignable to attributes type resolved from the type of opening-element
+         * @param openingLikeElement 
          */
         function checkJsxAttributes(openingLikeElement: JsxOpeningLikeElement) {
+            let targetAttributesType: Type;
             // Get target attributes type from resolving opening-element
             // Check if given attributes (openingLikeELement.attributes) are compatible with the given attributes
             if (isJsxIntrinsicIdentifier(openingLikeElement.tagName)) {
-                checkAttributesTypeOfIntrinsicJsxOpeningLikeElement(openingLikeElement);
+                targetAttributesType = getIntrinsicAttributesTypeFromJsxOpeningLikeElement(openingLikeElement);
             }
             else {
-                const targetAttributesType = getCustomJsxElementAttributesType(openingLikeElement);
-                const symbolTable = getAttributesSymbolTableOfJsxOpeningLikeElement(openingLikeElement);
-                // Filter out any hyphenated names as those are not play any role in type-checking unless there are corresponding properties in the target type
-                let attributesTable: Map<Symbol>;
-                let sourceAttributesType = anyType as Type;
-                if (symbolTable) {
-                    attributesTable = createMap<Symbol>();
-                    for (const key in symbolTable) {
-                        if (isUnhyphenatedJsxName(key) || getPropertyOfType(targetAttributesType, key)) {
-                            attributesTable[key] = symbolTable[key];
-                        }
+                targetAttributesType = getCustomJsxElementAttributesType(openingLikeElement);
+            }
+
+            const symbolTable = getAttributesSymbolTableOfJsxOpeningLikeElement(openingLikeElement);
+            // Filter out any hyphenated names as those are not play any role in type-checking unless there are corresponding properties in the target type
+            let attributesTable: Map<Symbol>;
+            let sourceAttributesType = anyType as Type;
+            let isSourceAttributesTypeEmpty = true;
+            if (symbolTable) {
+                attributesTable = createMap<Symbol>();
+                for (const key in symbolTable) {
+                    if (isUnhyphenatedJsxName(key) || getPropertyOfType(targetAttributesType, key)) {
+                        attributesTable[key] = symbolTable[key];
+                        isSourceAttributesTypeEmpty = false;
                     }
-                    sourceAttributesType = createJsxAttributesType(openingLikeElement.attributes, attributesTable);
                 }
-                checkTypeAssignableTo(sourceAttributesType, targetAttributesType, openingLikeElement.attributes.properties.length > 0 ? openingLikeElement.attributes : openingLikeElement); 
+                sourceAttributesType = createJsxAttributesType(openingLikeElement.attributes, attributesTable);
+            }
+            // TODO(yuisu): comment
+            if (targetAttributesType === emptyObjectType && !isTypeAny(sourceAttributesType) && !isSourceAttributesTypeEmpty) {
+                error(openingLikeElement, Diagnostics.JSX_element_class_does_not_support_attributes_because_it_does_not_have_a_0_property, getJsxElementPropertiesName());
+            }
+            else {
+                checkTypeAssignableTo(sourceAttributesType, targetAttributesType, openingLikeElement.attributes.properties.length > 0 ? openingLikeElement.attributes : openingLikeElement);
             }
         }
 
@@ -12448,7 +12460,8 @@ namespace ts {
                 resultOfFailedInference = undefined;
                 result = chooseOverload(candidates, assignableRelation, signatureHelpTrailingComma);
             }
-            if (result) {
+            // TODO (yuisu): comment
+            if (result || isJsxOpeningLikeElement) {
                 return result;
             }
 
@@ -12462,8 +12475,7 @@ namespace ts {
                 // in arguments too early. If possible, we'd like to only type them once we know the correct
                 // overload. However, this matters for the case where the call is correct. When the call is
                 // an error, we don't need to exclude any arguments, although it would cause no harm to do so.
-                // TODO (yuisu): comment
-                checkApplicableSignature(node, args, candidateForArgumentError, assignableRelation, /*excludeArgument*/ undefined, /*reportErrors*/ isJsxOpeningLikeElement ? false: true);
+                checkApplicableSignature(node, args, candidateForArgumentError, assignableRelation, /*excludeArgument*/ undefined, /*reportErrors*/ true);
             }
             else if (candidateForTypeArgumentError) {
                 if (!isTaggedTemplate && !isDecorator && typeArguments) {
