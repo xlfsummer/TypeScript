@@ -10,8 +10,9 @@ namespace ts.codefix {
         if (!(nodes && nodes.length)) {
             return undefined;
         }
+        const checker = context.program.getTypeChecker();
         // TODO: collecting data in scopes probably can be incremental
-        return collectEnclosingScopes(nodes).map(scope => extractMethodInScope(nodes, scope));
+        return collectEnclosingScopes(nodes).map(scope => extractMethodInScope(nodes, scope, checker));
     }
 
     function getRangeToExtract(sourceFile: SourceFile, span: TextSpan): Node[] | undefined {
@@ -36,20 +37,21 @@ namespace ts.codefix {
             }
 
             // here is it known that node and span overlap
-            // permitted cases - span completely covers the node 
+            // permitted cases
+            // - span covers this node 
+            // - span is somewhere inside the node 
             const start = n.getStart(sourceFile);
-            // 1. if span exactly covers the node - 
-            if (startEndContainsRange(n.getFullStart(), n.getStart()))
+            if (span.start > start && textSpanEnd(span) < n.getEnd()) {
+                forEachChild()
+            }
             if (rangeContainsStartEnd(n, span.start, textSpanEnd(span))) {
                 // node contains span
             }
-            if (startEndOverlapsWithStartEnd(start, end))
-            if (textSpanContainsPosition(span, start) && textSpanContainsPosition(span, end)) {
-                // if node is entirely in the span - add it and 
-                (nodes || (nodes = [])).push(n);
-                return checkNodesInSpan(n);
-            }
-            else if (startEndContainsRange(start, end, ))
+            // if (textSpanContainsPosition(span, start) && textSpanContainsPosition(span, end)) {
+            //     // if node is entirely in the span - add it and 
+            //     (nodes || (nodes = [])).push(n);
+            //     return checkNodesInSpan(n);
+            // }
         }
         function checkNodesInSpan(n: Node) {
             if (!n || isBadSpan || isFunctionLike(n) || isClassLike(n)) {
@@ -99,7 +101,32 @@ namespace ts.codefix {
         return scopes;
     }
 
-    function extractMethodInScope(range: Node[], scope: Node): CodeAction {
+    function extractMethodInScope(range: Expression | Statement[], _scope: Node, _checker: TypeChecker): CodeAction {
+        if (!isArray(range)) {
+            range = [createStatement(range)];
+        }
+        const array = visitNodes(createNodeArray(range), visitor, isStatement);
+        let typeParameters: TypeParameterDeclaration[];
+        let parameters: ParameterDeclaration[];
+        let returnType: TypeNode;
+        const subtree = createFunctionDeclaration(
+            /*decorators*/ undefined,
+            /*modifiers*/ undefined,
+            /*asteriskToken */ undefined,
+            createUniqueName("newFunction"),
+            typeParameters,
+            parameters,
+            returnType,
+            createBlock(array));
+        
+        // TODO:print the tree
+        if (subtree) {
 
+        }
+        return undefined;
+
+        function visitor(_n: Node): VisitResult<Statement> {
+            return undefined;
+        }
     }
 }
