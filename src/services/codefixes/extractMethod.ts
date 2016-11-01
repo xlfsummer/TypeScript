@@ -3,29 +3,32 @@ namespace ts.codefix {
     registerCodeFix({
         errorCodes: [Diagnostics.Extract_method.code],
         getCodeActions: context => extractMethod(context)
-    })
+    });
+
+    type RangeToExtract = Expression | Statement[];
 
     function extractMethod(context: CodeFixContext): CodeAction[] | undefined {
-        const nodes = getRangeToExtract(context.sourceFile, context.span);
-        if (!(nodes && nodes.length)) {
+        const range = getRangeToExtract(context.sourceFile, context.span);
+        if (!range) {
             return undefined;
         }
         const checker = context.program.getTypeChecker();
         // TODO: collecting data in scopes probably can be incremental
-        return collectEnclosingScopes(nodes).map(scope => extractMethodInScope(nodes, scope, checker));
+        return collectEnclosingScopes(range).map(scope => extractMethodInScope(range, scope, checker));
     }
 
-    function getRangeToExtract(sourceFile: SourceFile, span: TextSpan): Node[] | undefined {
+    function getRangeToExtract(sourceFile: SourceFile, span: TextSpan): RangeToExtract | undefined {
         // 1. determine syntactically if operation is applicable
         //   1.1. check that spans completely covers nodes
         //   1.2  check that span does not have break/continue statements or conditional returns
-        let nodes: Node[];
+        let foundExpression: Expression;
+        let foundStatementList: Statement[];
 
         let isBadSpan = false;
-        let isInConditional = false;
+        let disallowJumps = false;
         findNodes(sourceFile);
 
-        return isBadSpan ? undefined : nodes;
+        return isBadSpan ? undefined : foundExpression || foundStatementList;
 
 
         function findNodes(n: Node) {
@@ -42,7 +45,6 @@ namespace ts.codefix {
             // - span is somewhere inside the node 
             const start = n.getStart(sourceFile);
             if (span.start > start && textSpanEnd(span) < n.getEnd()) {
-                forEachChild()
             }
             if (rangeContainsStartEnd(n, span.start, textSpanEnd(span))) {
                 // node contains span
@@ -57,7 +59,7 @@ namespace ts.codefix {
             if (!n || isBadSpan || isFunctionLike(n) || isClassLike(n)) {
                 return;
             }
-            const savedIsInConditional = isInConditional;
+            const savedDisallowJumps = disallowJumps;
             if (n.parent) {
                 switch (n.parent.kind) {
                     case SyntaxKind.ForStatement:
@@ -65,10 +67,16 @@ namespace ts.codefix {
                     case SyntaxKind.ForOfStatement:
                     case SyntaxKind.WhileStatement:
                     case SyntaxKind.DoStatement:
-                        isInConditional = (<ForStatement | ForInStatement | ForOfStatement | WhileStatement | DoStatement>n.parent).statement === n;
+                        disallowJumps = (<ForStatement | ForInStatement | ForOfStatement | WhileStatement | DoStatement>n.parent).statement === n;
                         break;
                     case SyntaxKind.IfStatement:
-                        isInConditional = (<IfStatement>n.parent).thenStatement === n || (<IfStatement>n.parent).elseStatement === n;
+                        disallowJumps = (<IfStatement>n.parent).thenStatement === n || (<IfStatement>n.parent).elseStatement === n;
+                        break;
+                    case SyntaxKind.TryStatement:
+                        disallowJumps = (<TryStatement>n.parent).tryBlock === n || (<TryStatement>n.parent).finallyBlock === n;
+                        break;
+                    case SyntaxKind.CatchClause:
+                        disallowJumps = (<CatchClause>n.parent).block === n;
                         break;
                 }
             }
@@ -76,22 +84,23 @@ namespace ts.codefix {
                 case SyntaxKind.ReturnStatement:
                 case SyntaxKind.BreakStatement:
                 case SyntaxKind.ContinueStatement:
-                    if (isInConditional) {
+                    if (disallowJumps) {
                         isBadSpan = true;
-                        break;
                     }
+                    break;
                 default:
                     forEachChild(n, checkNodesInSpan);
+                    break;
             }
 
-            isInConditional = savedIsInConditional;
+            disallowJumps = savedDisallowJumps;
         }
     }
 
-    function collectEnclosingScopes(nodes: Node[]) {
+    function collectEnclosingScopes(range: RangeToExtract) {
         // 2. collect enclosing scopes
         const scopes: (FunctionLikeDeclaration | SourceFile)[] = [];
-        let current = nodes[0];
+        let current: Node = isArray(range) ? firstOrUndefined(range) : range;
         while (current) {
             if (isFunctionLike(current) || isSourceFile(current)) {
                 scopes.push(current);
@@ -101,7 +110,7 @@ namespace ts.codefix {
         return scopes;
     }
 
-    function extractMethodInScope(range: Expression | Statement[], _scope: Node, _checker: TypeChecker): CodeAction {
+    function extractMethodInScope(range: RangeToExtract, _scope: Node, _checker: TypeChecker): CodeAction {
         if (!isArray(range)) {
             range = [createStatement(range)];
         }
