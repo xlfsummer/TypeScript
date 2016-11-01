@@ -3134,5 +3134,9 @@
     "Implement inherited abstract class": {
         "category": "Message",
         "code": 90007
+    },
+    "Extract method": {
+        "category": "Message",
+        "code": 90008
     }
 }
