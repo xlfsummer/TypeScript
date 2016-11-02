@@ -31,7 +31,7 @@ namespace ts.codefix {
         return isBadSpan ? undefined : foundExpression || foundStatementList;
 
 
-        function findNodes(n: Node) {
+        function findNodes(n: Node): void {
             // bail out early if:
             // - span is already known to be bad
             // - node and span don't overlap
@@ -40,21 +40,32 @@ namespace ts.codefix {
             }
 
             // here is it known that node and span overlap
-            // permitted cases
-            // - span covers this node 
-            // - span is somewhere inside the node 
             const start = n.getStart(sourceFile);
-            if (span.start > start && textSpanEnd(span) < n.getEnd()) {
+            if (textSpanContainsPosition(span, start) && textSpanContainsPosition(span, textSpanEnd(span))) {
+                // node is completely contained in the span
+                if (isExpression(n)) {
+                    // span should cover exactly one expression
+                    if (foundStatementList || foundExpression) {
+                        isBadSpan = true;
+                    }
+                    else {
+                        foundExpression = n;
+                    }
+                }
+                else if (isStatement(n)) {
+                    // all covered statements should belong to the same parent
+                    if (foundExpression || (foundStatementList && foundStatementList[0].parent !== n.parent)) {
+                        isBadSpan = true;
+                    }
+                    else {
+                        (foundStatementList || (foundStatementList = [])).push(n);
+                    }
+                }
+                return;
             }
-            if (rangeContainsStartEnd(n, span.start, textSpanEnd(span))) {
-                // node contains span
-            }
-            // if (textSpanContainsPosition(span, start) && textSpanContainsPosition(span, end)) {
-            //     // if node is entirely in the span - add it and 
-            //     (nodes || (nodes = [])).push(n);
-            //     return checkNodesInSpan(n);
-            // }
+            return forEachChild(n, findNodes);
         }
+
         function checkNodesInSpan(n: Node) {
             if (!n || isBadSpan || isFunctionLike(n) || isClassLike(n)) {
                 return;
@@ -81,6 +92,8 @@ namespace ts.codefix {
                 }
             }
             switch (n.kind) {
+                case SyntaxKind.AwaitExpression:
+                case SyntaxKind.YieldExpression:
                 case SyntaxKind.ReturnStatement:
                 case SyntaxKind.BreakStatement:
                 case SyntaxKind.ContinueStatement:
@@ -110,18 +123,25 @@ namespace ts.codefix {
         return scopes;
     }
 
-    function extractMethodInScope(range: RangeToExtract, _scope: Node, _checker: TypeChecker): CodeAction {
+    const nullLexicalEnvironment: LexicalEnvironment = {
+        startLexicalEnvironment: noop,
+        endLexicalEnvironment: noop
+    };
+
+    function extractMethodInScope(range: RangeToExtract, _scope: Node, checker: TypeChecker): CodeAction {
         if (!isArray(range)) {
             range = [createStatement(range)];
         }
         const array = visitNodes(createNodeArray(range), visitor, isStatement);
         let typeParameters: TypeParameterDeclaration[];
         let parameters: ParameterDeclaration[];
+        let modifiers: Modifier[];
+        let asteriskToken: Token<SyntaxKind.AsteriskToken>;
         let returnType: TypeNode;
         const subtree = createFunctionDeclaration(
             /*decorators*/ undefined,
-            /*modifiers*/ undefined,
-            /*asteriskToken */ undefined,
+            modifiers,
+            asteriskToken,
             createUniqueName("newFunction"),
             typeParameters,
             parameters,
@@ -134,8 +154,22 @@ namespace ts.codefix {
         }
         return undefined;
 
-        function visitor(_n: Node): VisitResult<Statement> {
-            return undefined;
+        // walk the tree, collect:
+        // - variables that flow in
+        // - variables as RHS of assignments
+        // - variable declarations
+        function visitor(n: Node): VisitResult<Statement> {
+            switch (n.kind) {
+                case SyntaxKind.Identifier:
+                    if (isPartOfExpression(n)) {
+                        const symbol = checker.getSymbolAtLocation(n);
+                        if (symbol && checker.isUnknownSymbol(symbol)) {
+                            
+                        }
+                    }
+                    break;
+            }
+            return visitEachChild(n, visitor, nullLexicalEnvironment);
         }
     }
 }
