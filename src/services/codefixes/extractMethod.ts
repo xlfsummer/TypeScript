@@ -125,19 +125,25 @@ namespace ts.codefix {
 
     const nullLexicalEnvironment: LexicalEnvironment = {
         startLexicalEnvironment: noop,
-        endLexicalEnvironment: noop
+        endLexicalEnvironment: () => emptyArray
     };
 
     function extractMethodInScope(range: RangeToExtract, _scope: Node, checker: TypeChecker): CodeAction {
         if (!isArray(range)) {
             range = [createStatement(range)];
         }
+
+        // compute combined range covered by individual entries in RangeToExtract
+        // TODO: this is not dependent on scope and can be lifted
+        //const combinedRange = range.reduce((p, c) => p ? createRange(p.pos, c.end) : c, <TextRange>undefined);
+
         const array = visitNodes(createNodeArray(range), visitor, isStatement);
         let typeParameters: TypeParameterDeclaration[];
         let parameters: ParameterDeclaration[];
         let modifiers: Modifier[];
         let asteriskToken: Token<SyntaxKind.AsteriskToken>;
         let returnType: TypeNode;
+
         const subtree = createFunctionDeclaration(
             /*decorators*/ undefined,
             modifiers,
@@ -158,13 +164,13 @@ namespace ts.codefix {
         // - variables that flow in
         // - variables as RHS of assignments
         // - variable declarations
-        function visitor(n: Node): VisitResult<Statement> {
+        function visitor(n: Node): VisitResult<Node> {
             switch (n.kind) {
                 case SyntaxKind.Identifier:
                     if (isPartOfExpression(n)) {
                         const symbol = checker.getSymbolAtLocation(n);
-                        if (symbol && checker.isUnknownSymbol(symbol)) {
-                            
+                        if (symbol && symbol.valueDeclaration) {
+                            // parameters
                         }
                     }
                     break;
