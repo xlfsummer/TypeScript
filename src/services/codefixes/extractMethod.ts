@@ -1,23 +1,23 @@
 /* @internal */
-namespace ts.codefix {
+namespace ts.codefix.extractMethod {
     registerCodeFix({
         errorCodes: [Diagnostics.Extract_method.code],
         getCodeActions: context => extractMethod(context)
     });
 
-    type RangeToExtract = Expression | Statement[];
+    export type RangeToExtract = Expression | Statement[];
 
     function extractMethod(context: CodeFixContext): CodeAction[] | undefined {
         const range = getRangeToExtract(context.sourceFile, context.span);
         if (!range) {
             return undefined;
         }
-        const checker = context.program.getTypeChecker();
-        // TODO: collecting data in scopes probably can be incremental
-        return collectEnclosingScopes(range).map(scope => extractMethodInScope(range, scope, checker));
+        // const checker = context.program.getTypeChecker();
+        // // TODO: collecting data in scopes probably can be incremental
+        // return collectEnclosingScopes(range).map(scope => extractMethodInScope(range, scope, checker));
     }
 
-    function getRangeToExtract(sourceFile: SourceFile, span: TextSpan): RangeToExtract | undefined {
+    export function getRangeToExtract(sourceFile: SourceFile, span: TextSpan): RangeToExtract | undefined {
         // 1. determine syntactically if operation is applicable
         //   1.1. check that spans completely covers nodes
         //   1.2  check that span does not have break/continue statements or conditional returns
@@ -30,7 +30,6 @@ namespace ts.codefix {
 
         return isBadSpan ? undefined : foundExpression || foundStatementList;
 
-
         function findNodes(n: Node): void {
             // bail out early if:
             // - span is already known to be bad
@@ -41,7 +40,7 @@ namespace ts.codefix {
 
             // here is it known that node and span overlap
             const start = n.getStart(sourceFile);
-            if (textSpanContainsPosition(span, start) && textSpanContainsPosition(span, textSpanEnd(span))) {
+            if (!isSourceFile(n) && textSpanContainsPosition(span, start) &&  n.getEnd() <= textSpanEnd(span)) {
                 // node is completely contained in the span
                 if (isExpression(n)) {
                     // span should cover exactly one expression
@@ -60,6 +59,10 @@ namespace ts.codefix {
                     else {
                         (foundStatementList || (foundStatementList = [])).push(n);
                     }
+                }
+                else {
+                    // unsupported scenario: something that is neither expression or statement (i.e. single variable declaration)
+                    isBadSpan = true;
                 }
                 return;
             }
@@ -110,72 +113,72 @@ namespace ts.codefix {
         }
     }
 
-    function collectEnclosingScopes(range: RangeToExtract) {
-        // 2. collect enclosing scopes
-        const scopes: (FunctionLikeDeclaration | SourceFile)[] = [];
-        let current: Node = isArray(range) ? firstOrUndefined(range) : range;
-        while (current) {
-            if (isFunctionLike(current) || isSourceFile(current)) {
-                scopes.push(current);
-            }
-            current = current.parent;
-        }
-        return scopes;
-    }
+    // function collectEnclosingScopes(range: RangeToExtract) {
+    //     // 2. collect enclosing scopes
+    //     const scopes: (FunctionLikeDeclaration | SourceFile)[] = [];
+    //     let current: Node = isArray(range) ? firstOrUndefined(range) : range;
+    //     while (current) {
+    //         if (isFunctionLike(current) || isSourceFile(current)) {
+    //             scopes.push(current);
+    //         }
+    //         current = current.parent;
+    //     }
+    //     return scopes;
+    // }
 
-    const nullLexicalEnvironment: LexicalEnvironment = {
-        startLexicalEnvironment: noop,
-        endLexicalEnvironment: () => emptyArray
-    };
+    // const nullLexicalEnvironment: LexicalEnvironment = {
+    //     startLexicalEnvironment: noop,
+    //     endLexicalEnvironment: () => emptyArray
+    // };
 
-    function extractMethodInScope(range: RangeToExtract, _scope: Node, checker: TypeChecker): CodeAction {
-        if (!isArray(range)) {
-            range = [createStatement(range)];
-        }
+    // function extractMethodInScope(range: RangeToExtract, _scope: Node, checker: TypeChecker): CodeAction {
+    //     if (!isArray(range)) {
+    //         range = [createStatement(range)];
+    //     }
 
-        // compute combined range covered by individual entries in RangeToExtract
-        // TODO: this is not dependent on scope and can be lifted
-        //const combinedRange = range.reduce((p, c) => p ? createRange(p.pos, c.end) : c, <TextRange>undefined);
+    //     // compute combined range covered by individual entries in RangeToExtract
+    //     // TODO: this is not dependent on scope and can be lifted
+    //     //const combinedRange = range.reduce((p, c) => p ? createRange(p.pos, c.end) : c, <TextRange>undefined);
 
-        const array = visitNodes(createNodeArray(range), visitor, isStatement);
-        let typeParameters: TypeParameterDeclaration[];
-        let parameters: ParameterDeclaration[];
-        let modifiers: Modifier[];
-        let asteriskToken: Token<SyntaxKind.AsteriskToken>;
-        let returnType: TypeNode;
+    //     const array = visitNodes(createNodeArray(range), visitor, isStatement);
+    //     let typeParameters: TypeParameterDeclaration[];
+    //     let parameters: ParameterDeclaration[];
+    //     let modifiers: Modifier[];
+    //     let asteriskToken: Token<SyntaxKind.AsteriskToken>;
+    //     let returnType: TypeNode;
 
-        const subtree = createFunctionDeclaration(
-            /*decorators*/ undefined,
-            modifiers,
-            asteriskToken,
-            createUniqueName("newFunction"),
-            typeParameters,
-            parameters,
-            returnType,
-            createBlock(array));
+    //     const subtree = createFunctionDeclaration(
+    //         /*decorators*/ undefined,
+    //         modifiers,
+    //         asteriskToken,
+    //         createUniqueName("newFunction"),
+    //         typeParameters,
+    //         parameters,
+    //         returnType,
+    //         createBlock(array));
         
-        // TODO:print the tree
-        if (subtree) {
+    //     // TODO:print the tree
+    //     if (subtree) {
 
-        }
-        return undefined;
+    //     }
+    //     return undefined;
 
-        // walk the tree, collect:
-        // - variables that flow in
-        // - variables as RHS of assignments
-        // - variable declarations
-        function visitor(n: Node): VisitResult<Node> {
-            switch (n.kind) {
-                case SyntaxKind.Identifier:
-                    if (isPartOfExpression(n)) {
-                        const symbol = checker.getSymbolAtLocation(n);
-                        if (symbol && symbol.valueDeclaration) {
-                            // parameters
-                        }
-                    }
-                    break;
-            }
-            return visitEachChild(n, visitor, nullLexicalEnvironment);
-        }
-    }
+    //     // walk the tree, collect:
+    //     // - variables that flow in
+    //     // - variables as RHS of assignments
+    //     // - variable declarations
+    //     function visitor(n: Node): VisitResult<Node> {
+    //         switch (n.kind) {
+    //             case SyntaxKind.Identifier:
+    //                 if (isPartOfExpression(n)) {
+    //                     const symbol = checker.getSymbolAtLocation(n);
+    //                     if (symbol && symbol.valueDeclaration) {
+    //                         // parameters
+    //                     }
+    //                 }
+    //                 break;
+    //         }
+    //         return visitEachChild(n, visitor, nullLexicalEnvironment);
+    //     }
+    // }
 }

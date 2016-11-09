@@ -304,6 +304,12 @@ declare namespace FourSlashInterface {
         resetCancelled(): void;
         setCancelled(numberOfCalls?: number): void;
     }
+    class codefixes {
+        readonly extractMethod: ExtractMethod;
+    }
+    export class ExtractMethod {
+        verifyRangeToExtract(selection: { startMarker: string, endMarker: string }, expected?: Range): void;
+    }
     module classification {
         function comment(text: string, position?: number): {
             classificationType: string;
@@ -431,3 +437,4 @@ declare var debug: FourSlashInterface.debug;
 declare var format: FourSlashInterface.format;
 declare var cancellation: FourSlashInterface.cancellation;
 declare var classification: typeof FourSlashInterface.classification;
+declare var codefixes: FourSlashInterface.codefixes;
