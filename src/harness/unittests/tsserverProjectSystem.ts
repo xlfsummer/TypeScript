@@ -434,6 +434,10 @@ namespace ts.projectSystem {
             };
         }
 
+        createHash(s: string): string {
+            return s;
+        }
+
         triggerDirectoryWatcherCallback(directoryName: string, fileName: string): void {
             const path = this.toPath(directoryName);
             const callbacks = this.watchedDirectories[path];
@@ -1964,6 +1968,33 @@ namespace ts.projectSystem {
             projectService.checkNumberOfProjects({ configuredProjects: 1 });
             checkProjectActualFiles(projectService.configuredProjects[0], [libES5.path, libES2015Promise.path, app.path]);
         });
+
+        it("should handle non-existing directories in config file", () => {
+            const f = {
+                path: "/a/src/app.ts",
+                content: "let x = 1;"
+            };
+            const config = {
+                path: "/a/tsconfig.json",
+                content: JSON.stringify({
+                    compilerOptions: {},
+                    include: [
+                        "src/**/*",
+                        "notexistingfolder/*"
+                    ]
+                })
+            };
+            const host = createServerHost([f, config]);
+            const projectService = createProjectService(host);
+            projectService.openClientFile(f.path);
+            projectService.checkNumberOfProjects({ configuredProjects: 1 });
+
+            projectService.closeClientFile(f.path);
+            projectService.checkNumberOfProjects({ configuredProjects: 0 });
+
+            projectService.openClientFile(f.path);
+            projectService.checkNumberOfProjects({ configuredProjects: 1 });
+        });
     });
 
     describe("prefer typings to js", () => {
@@ -2222,6 +2253,27 @@ namespace ts.projectSystem {
             assert.equal(diags.length, 0);
         });
 
+        it("should property handle missing config files", () => {
+            const f1 = {
+                path: "/a/b/app.ts",
+                content: "let x = 1"
+            };
+            const config = {
+                path: "/a/b/tsconfig.json",
+                content: "{}"
+            };
+            const projectName = "project1";
+            const host = createServerHost([f1]);
+            const projectService = createProjectService(host);
+            projectService.openExternalProject({ rootFiles: toExternalFiles([f1.path, config.path]), options: {}, projectFileName: projectName });
+
+            // should have one external project since config file is missing
+            projectService.checkNumberOfProjects({ externalProjects: 1 });
+
+            host.reloadFS([f1, config]);
+            projectService.openExternalProject({ rootFiles: toExternalFiles([f1.path, config.path]), options: {}, projectFileName: projectName });
+            projectService.checkNumberOfProjects({ configuredProjects: 1 });
+        });
     });
 
     describe("add the missing module file for inferred project", () => {

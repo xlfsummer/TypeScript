@@ -250,6 +250,8 @@ namespace ts.server {
             readonly typingsInstaller: ITypingsInstaller = nullTypingsInstaller,
             private readonly eventHandler?: ProjectServiceEventHandler) {
 
+            Debug.assert(!!host.createHash, "'ServerHost.createHash' is required for ProjectService");
+
             this.toCanonicalFileName = createGetCanonicalFileName(host.useCaseSensitiveFileNames);
             this.directoryWatchers = new DirectoryWatchers(this);
             this.throttledOperations = new ThrottledOperations(host);
@@ -1288,7 +1290,9 @@ namespace ts.server {
             for (const file of proj.rootFiles) {
                 const normalized = toNormalizedPath(file.fileName);
                 if (getBaseFileName(normalized) === "tsconfig.json") {
-                    (tsConfigFiles || (tsConfigFiles = [])).push(normalized);
+                    if (this.host.fileExists(normalized)) {
+                        (tsConfigFiles || (tsConfigFiles = [])).push(normalized);
+                    }
                 }
                 else {
                     rootFiles.push(file);
