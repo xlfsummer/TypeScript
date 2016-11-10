@@ -98,8 +98,8 @@ namespace ts.codefix.extractMethod {
                 Return = 1 << 2,
                 Yield = 1 << 3,
                 Await = 1 << 4
-            } 
-            
+            }
+
             let canExtract = true;
             let permittedJumps = PermittedJumps.Return | PermittedJumps.Yield | PermittedJumps.Await;
             let seenLabels: string[];
@@ -107,7 +107,7 @@ namespace ts.codefix.extractMethod {
             return canExtract;
 
             function visit(n: Node) {
-                if (!n || isFunctionLike(n) || isClassLike(n)) {
+                if (!canExtract || !n || isFunctionLike(n) || isClassLike(n)) {
                     return;
                 }
                 const savedPermittedJumps = permittedJumps;
