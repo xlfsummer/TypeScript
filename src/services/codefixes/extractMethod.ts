@@ -17,7 +17,7 @@ namespace ts.codefix.extractMethod {
         // return collectEnclosingScopes(range).map(scope => extractMethodInScope(range, scope, checker));
     }
 
-    function spanContainsNode(span:TextSpan, node: Node, file: SourceFile): boolean {
+    function spanContainsNode(span: TextSpan, node: Node, file: SourceFile): boolean {
         return textSpanContainsPosition(span, node.getStart(file)) &&
             node.getEnd() <= textSpanEnd(span);
     }
@@ -91,8 +91,19 @@ namespace ts.codefix.extractMethod {
         }
 
         function canExtractNode(n: Node): boolean {
+            const enum PermittedJumps {
+                None = 0,
+                Break = 1 << 0,
+                Continue = 1 << 1,
+                Return = 1 << 2,
+                Yield = 1 << 3,
+                Await = 1 << 4,
+                All = Break | Continue | Return | Yield | Await
+            } 
+            
             let canExtract = true;
-            let disallowJumps = false;
+            let permittedJumps = PermittedJumps.All;
+            let seenLabels: string[];
             visit(n);
             return canExtract;
 
@@ -100,7 +111,7 @@ namespace ts.codefix.extractMethod {
                 if (!n || isFunctionLike(n) || isClassLike(n)) {
                     return;
                 }
-                const savedDisallowJumps = disallowJumps;
+                const savedPermittedJumps = permittedJumps;
                 if (n.parent) {
                     switch (n.parent.kind) {
                         case SyntaxKind.ForStatement:
@@ -108,26 +119,76 @@ namespace ts.codefix.extractMethod {
                         case SyntaxKind.ForOfStatement:
                         case SyntaxKind.WhileStatement:
                         case SyntaxKind.DoStatement:
-                            disallowJumps = (<ForStatement | ForInStatement | ForOfStatement | WhileStatement | DoStatement>n.parent).statement === n;
+                            if ((<ForStatement | ForInStatement | ForOfStatement | WhileStatement | DoStatement>n.parent).statement === n) {
+                                // allow unlabeled break/continue inside loops
+                                permittedJumps |= PermittedJumps.Break | PermittedJumps.Continue;
+                            }
                             break;
                         case SyntaxKind.IfStatement:
-                            disallowJumps = (<IfStatement>n.parent).thenStatement === n || (<IfStatement>n.parent).elseStatement === n;
+                            if ((<IfStatement>n.parent).thenStatement === n || (<IfStatement>n.parent).elseStatement === n) {
+                                // forbid all jumps inside thenStatement or elseStatement 
+                                permittedJumps = PermittedJumps.None;
+                            }
                             break;
                         case SyntaxKind.TryStatement:
-                            disallowJumps = (<TryStatement>n.parent).tryBlock === n || (<TryStatement>n.parent).finallyBlock === n;
+                            if ((<TryStatement>n.parent).tryBlock === n || (<TryStatement>n.parent).finallyBlock === n) {
+                                // forbid all jumps inside try or finally blocks
+                                permittedJumps = PermittedJumps.None;
+                            }
                             break;
                         case SyntaxKind.CatchClause:
-                            disallowJumps = (<CatchClause>n.parent).block === n;
+                            if ((<CatchClause>n.parent).block === n) {
+                                // forbid all jumps inside the block of catch clause
+                                permittedJumps = PermittedJumps.None;
+                            }
+                            break;
+                        case SyntaxKind.CaseClause:
+                            if ((<CaseClause>n).expression !== n) {
+                                // allow unlabeled break inside case clauses
+                                permittedJumps |= PermittedJumps.Break;
+                            }
                             break;
                     }
                 }
                 switch (n.kind) {
-                    case SyntaxKind.AwaitExpression:
-                    case SyntaxKind.YieldExpression:
-                    case SyntaxKind.ReturnStatement:
+                    case SyntaxKind.LabeledStatement:
+                        {
+                            const label = (<LabeledStatement>n).label;
+                            (seenLabels || (seenLabels = [])).push(label.text);
+                            forEachChild(n, visit);
+                            seenLabels.pop();
+                            break;
+                        }
                     case SyntaxKind.BreakStatement:
                     case SyntaxKind.ContinueStatement:
-                        if (disallowJumps) {
+                        {
+                            const label = (<BreakStatement | ContinueStatement>n).label;
+                            if (label) {
+                                if (!contains(seenLabels, label.text)) {
+                                    // attempts to jump to label that is not in range to be extracted
+                                    canExtract = false;
+                                }
+                            }
+                            else {
+                                if (!(permittedJumps & (SyntaxKind.BreakStatement ? PermittedJumps.Break : PermittedJumps.Continue))) {
+                                    // attempt to break or continue in a forbidden context
+                                    canExtract = false;
+                                }
+                            }
+                            break;
+                        }
+                    case SyntaxKind.AwaitExpression:
+                        if (!(permittedJumps & PermittedJumps.Await)) {
+                            canExtract = false;
+                        }
+                        break;
+                    case SyntaxKind.YieldExpression:
+                        if (!(permittedJumps & PermittedJumps.Yield)) {
+                            canExtract = false;
+                        }
+                        break;
+                    case SyntaxKind.ReturnStatement:
+                        if (!(permittedJumps & PermittedJumps.Return)) {
                             canExtract = false;
                         }
                         break;
@@ -136,77 +197,77 @@ namespace ts.codefix.extractMethod {
                         break;
                 }
 
-            disallowJumps = savedDisallowJumps;
+                permittedJumps = savedPermittedJumps;
+            }
         }
-    }
 
-    // function collectEnclosingScopes(range: RangeToExtract) {
-    //     // 2. collect enclosing scopes
-    //     const scopes: (FunctionLikeDeclaration | SourceFile)[] = [];
-    //     let current: Node = isArray(range) ? firstOrUndefined(range) : range;
-    //     while (current) {
-    //         if (isFunctionLike(current) || isSourceFile(current)) {
-    //             scopes.push(current);
-    //         }
-    //         current = current.parent;
-    //     }
-    //     return scopes;
-    // }
+        // function collectEnclosingScopes(range: RangeToExtract) {
+        //     // 2. collect enclosing scopes
+        //     const scopes: (FunctionLikeDeclaration | SourceFile)[] = [];
+        //     let current: Node = isArray(range) ? firstOrUndefined(range) : range;
+        //     while (current) {
+        //         if (isFunctionLike(current) || isSourceFile(current)) {
+        //             scopes.push(current);
+        //         }
+        //         current = current.parent;
+        //     }
+        //     return scopes;
+        // }
 
-    // const nullLexicalEnvironment: LexicalEnvironment = {
-    //     startLexicalEnvironment: noop,
-    //     endLexicalEnvironment: () => emptyArray
-    // };
+        // const nullLexicalEnvironment: LexicalEnvironment = {
+        //     startLexicalEnvironment: noop,
+        //     endLexicalEnvironment: () => emptyArray
+        // };
 
-    // function extractMethodInScope(range: RangeToExtract, _scope: Node, checker: TypeChecker): CodeAction {
-    //     if (!isArray(range)) {
-    //         range = [createStatement(range)];
-    //     }
+        // function extractMethodInScope(range: RangeToExtract, _scope: Node, checker: TypeChecker): CodeAction {
+        //     if (!isArray(range)) {
+        //         range = [createStatement(range)];
+        //     }
 
-    //     // compute combined range covered by individual entries in RangeToExtract
-    //     // TODO: this is not dependent on scope and can be lifted
-    //     //const combinedRange = range.reduce((p, c) => p ? createRange(p.pos, c.end) : c, <TextRange>undefined);
+        //     // compute combined range covered by individual entries in RangeToExtract
+        //     // TODO: this is not dependent on scope and can be lifted
+        //     //const combinedRange = range.reduce((p, c) => p ? createRange(p.pos, c.end) : c, <TextRange>undefined);
 
-    //     const array = visitNodes(createNodeArray(range), visitor, isStatement);
-    //     let typeParameters: TypeParameterDeclaration[];
-    //     let parameters: ParameterDeclaration[];
-    //     let modifiers: Modifier[];
-    //     let asteriskToken: Token<SyntaxKind.AsteriskToken>;
-    //     let returnType: TypeNode;
+        //     const array = visitNodes(createNodeArray(range), visitor, isStatement);
+        //     let typeParameters: TypeParameterDeclaration[];
+        //     let parameters: ParameterDeclaration[];
+        //     let modifiers: Modifier[];
+        //     let asteriskToken: Token<SyntaxKind.AsteriskToken>;
+        //     let returnType: TypeNode;
 
-    //     const subtree = createFunctionDeclaration(
-    //         /*decorators*/ undefined,
-    //         modifiers,
-    //         asteriskToken,
-    //         createUniqueName("newFunction"),
-    //         typeParameters,
-    //         parameters,
-    //         returnType,
-    //         createBlock(array));
-        
-    //     // TODO:print the tree
-    //     if (subtree) {
+        //     const subtree = createFunctionDeclaration(
+        //         /*decorators*/ undefined,
+        //         modifiers,
+        //         asteriskToken,
+        //         createUniqueName("newFunction"),
+        //         typeParameters,
+        //         parameters,
+        //         returnType,
+        //         createBlock(array));
 
-    //     }
-    //     return undefined;
+        //     // TODO:print the tree
+        //     if (subtree) {
 
-    //     // walk the tree, collect:
-    //     // - variables that flow in
-    //     // - variables as RHS of assignments
-    //     // - variable declarations
-    //     function visitor(n: Node): VisitResult<Node> {
-    //         switch (n.kind) {
-    //             case SyntaxKind.Identifier:
-    //                 if (isPartOfExpression(n)) {
-    //                     const symbol = checker.getSymbolAtLocation(n);
-    //                     if (symbol && symbol.valueDeclaration) {
-    //                         // parameters
-    //                     }
-    //                 }
-    //                 break;
-    //         }
-    //         return visitEachChild(n, visitor, nullLexicalEnvironment);
-    //     }
-    // }
+        //     }
+        //     return undefined;
+
+        //     // walk the tree, collect:
+        //     // - variables that flow in
+        //     // - variables as RHS of assignments
+        //     // - variable declarations
+        //     function visitor(n: Node): VisitResult<Node> {
+        //         switch (n.kind) {
+        //             case SyntaxKind.Identifier:
+        //                 if (isPartOfExpression(n)) {
+        //                     const symbol = checker.getSymbolAtLocation(n);
+        //                     if (symbol && symbol.valueDeclaration) {
+        //                         // parameters
+        //                     }
+        //                 }
+        //                 break;
+        //         }
+        //         return visitEachChild(n, visitor, nullLexicalEnvironment);
+        //     }
+        // }
     }
 }
