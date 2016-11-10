@@ -64,8 +64,25 @@
 ////     }
 ////     break l3;/*e13*/
 //// }
-
-
+////
+//// function f() {
+////     while (true) {
+//// /*s14*/ 
+////         if (x) {
+////             return;
+////         } /*e14*/
+////     }
+//// }
+////
+//// function f() {
+////     while (true) {
+//// /*s15*/ 
+////         [|{|"name": 15|}if (x) {
+////         }
+////         return;|]
+/////*e15*/
+////     }
+//// }
 function check(n: number, expectSuccess: boolean): void {
     const startMarker = `s${n}`;
     const endMarker = `e${n}`;
@@ -104,3 +121,5 @@ check(10, /*expectSuccess*/ true);
 check(11, /*expectSuccess*/ false);
 check(12, /*expectSuccess*/ false);
 check(13, /*expectSuccess*/ false);
+check(14, /*expectSuccess*/ false);
+check(15, /*expectSuccess*/ true);
