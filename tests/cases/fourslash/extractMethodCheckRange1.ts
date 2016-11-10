@@ -34,10 +34,37 @@
 //// }
 ////
 //// /*s9*/
-//// let l1:
+//// l1:
 //// if (x) {
-////     break;
+////     break l1;
 //// }/*e9*/
+////
+//// /*s10*/
+//// [|l2:
+//// {
+////     if (x) {
+////     }
+////     break l2;
+//// }|]/*e10*/
+//// while (true) {
+//// /*s11*/    if(x) {
+////     }
+////     break;  /*e11*/
+//// }
+//// while (true) {
+//// /*s12*/    if(x) {
+////     }
+////     continue;  /*e12*/
+//// }
+//// 
+//// l3:
+//// {
+////    /*s13*/
+////     if (x) {
+////     }
+////     break l3;/*e13*/
+//// }
+
 
 function check(n: number, expectedRangeIndex?: number): void {
     const startMarker = `s${n}`;
@@ -60,3 +87,7 @@ check(6, /*expectedRangeIndex*/ 2);
 check(7);
 check(8, /*expectedRangeIndex*/ 3);
 check(9);
+check(10, /*expectedRangeIndex*/ 4);
+check(11);
+check(12);
+check(13);
