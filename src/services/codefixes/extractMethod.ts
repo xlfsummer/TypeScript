@@ -97,12 +97,11 @@ namespace ts.codefix.extractMethod {
                 Continue = 1 << 1,
                 Return = 1 << 2,
                 Yield = 1 << 3,
-                Await = 1 << 4,
-                All = Break | Continue | Return | Yield | Await
+                Await = 1 << 4
             } 
             
             let canExtract = true;
-            let permittedJumps = PermittedJumps.All;
+            let permittedJumps = PermittedJumps.Return | PermittedJumps.Yield | PermittedJumps.Await;
             let seenLabels: string[];
             visit(n);
             return canExtract;
