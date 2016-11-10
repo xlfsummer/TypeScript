@@ -524,6 +524,7 @@ namespace FourSlash {
                 assert.isTrue(!expectedRange, "expected no range");
             }
             else {
+                assert.isTrue(!!expectedRange, "got no range");
                 let start: number, end: number;
                 if (ts.isArray(expectedRange)) {
                     start = expectedRange[0].getStart(file);

@@ -17,97 +17,124 @@ namespace ts.codefix.extractMethod {
         // return collectEnclosingScopes(range).map(scope => extractMethodInScope(range, scope, checker));
     }
 
+    function spanContainsNode(span:TextSpan, node: Node, file: SourceFile): boolean {
+        return textSpanContainsPosition(span, node.getStart(file)) &&
+            node.getEnd() <= textSpanEnd(span);
+    }
+
+    function getParentNodeInSpan(n: Node, file: SourceFile, span: TextSpan): Node {
+        while (n) {
+            if (!n.parent) {
+                return undefined;
+            }
+            if (isSourceFile(n.parent) || !spanContainsNode(span, n.parent, file)) {
+                return n;
+            }
+
+            n = n.parent;
+        }
+    }
+
+    function isBlockLike(n: Node): n is BlockLike {
+        switch (n.kind) {
+            case SyntaxKind.Block:
+            case SyntaxKind.SourceFile:
+            case SyntaxKind.ModuleBlock:
+            case SyntaxKind.CaseClause:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     export function getRangeToExtract(sourceFile: SourceFile, span: TextSpan): RangeToExtract | undefined {
-        // 1. determine syntactically if operation is applicable
-        //   1.1. check that spans completely covers nodes
-        //   1.2  check that span does not have break/continue statements or conditional returns
-        let foundExpression: Expression;
-        let foundStatementList: Statement[];
-
-        let isBadSpan = false;
-        let disallowJumps = false;
-        findNodes(sourceFile);
-
-        return isBadSpan ? undefined : foundExpression || foundStatementList;
-
-        function findNodes(n: Node): void {
-            // bail out early if:
-            // - span is already known to be bad
-            // - node and span don't overlap
-            if (isBadSpan || !rangeOverlapsWithStartEnd(n, span.start, textSpanEnd(span))) {
-                return;
+        const start = getParentNodeInSpan(getTokenAtPosition(sourceFile, span.start), sourceFile, span);
+        const end = getParentNodeInSpan(findTokenOnLeftOfPosition(sourceFile, textSpanEnd(span)), sourceFile, span);
+        if (!start || !end || start.parent !== end.parent) {
+            return undefined;
+        }
+        if (start !== end) {
+            // start and end should be statements and parent should be either block or a source file
+            if (!isBlockLike(start.parent)) {
+                return undefined;
             }
-
-            // here is it known that node and span overlap
-            const start = n.getStart(sourceFile);
-            if (!isSourceFile(n) && textSpanContainsPosition(span, start) &&  n.getEnd() <= textSpanEnd(span)) {
-                // node is completely contained in the span
-                if (isExpression(n)) {
-                    // span should cover exactly one expression
-                    if (foundStatementList || foundExpression) {
-                        isBadSpan = true;
-                    }
-                    else {
-                        foundExpression = n;
-                    }
-                }
-                else if (isStatement(n)) {
-                    // all covered statements should belong to the same parent
-                    if (foundExpression || (foundStatementList && foundStatementList[0].parent !== n.parent)) {
-                        isBadSpan = true;
-                    }
-                    else {
-                        (foundStatementList || (foundStatementList = [])).push(n);
-                    }
-                }
-                else {
-                    // unsupported scenario: something that is neither expression or statement (i.e. single variable declaration)
-                    isBadSpan = true;
-                }
-                return;
+            if (!(isStatement(start) || isExpression(start)) && !(isStatement(end) || isExpression(end))) {
+                return undefined;
             }
-            return forEachChild(n, findNodes);
+            const statements: Statement[] = [];
+            for (const n of (<BlockLike>start.parent).statements) {
+                if (n === start || statements.length) {
+                    if (!canExtractNode(n)) {
+                        return undefined;
+                    }
+                    statements.push(n);
+                }
+                if (n === end) {
+                    break;
+                }
+            }
+            return statements;
+        }
+        else {
+            if (!canExtractNode(start)) {
+                return undefined;
+            }
+            if (isStatement(start)) {
+                return [start];
+            }
+            else if (isExpression(start)) {
+                return start;
+            }
+            else {
+                return undefined;
+            }
         }
 
-        function checkNodesInSpan(n: Node) {
-            if (!n || isBadSpan || isFunctionLike(n) || isClassLike(n)) {
-                return;
-            }
-            const savedDisallowJumps = disallowJumps;
-            if (n.parent) {
-                switch (n.parent.kind) {
-                    case SyntaxKind.ForStatement:
-                    case SyntaxKind.ForInStatement:
-                    case SyntaxKind.ForOfStatement:
-                    case SyntaxKind.WhileStatement:
-                    case SyntaxKind.DoStatement:
-                        disallowJumps = (<ForStatement | ForInStatement | ForOfStatement | WhileStatement | DoStatement>n.parent).statement === n;
+        function canExtractNode(n: Node): boolean {
+            let canExtract = true;
+            let disallowJumps = false;
+            visit(n);
+            return canExtract;
+
+            function visit(n: Node) {
+                if (!n || isFunctionLike(n) || isClassLike(n)) {
+                    return;
+                }
+                const savedDisallowJumps = disallowJumps;
+                if (n.parent) {
+                    switch (n.parent.kind) {
+                        case SyntaxKind.ForStatement:
+                        case SyntaxKind.ForInStatement:
+                        case SyntaxKind.ForOfStatement:
+                        case SyntaxKind.WhileStatement:
+                        case SyntaxKind.DoStatement:
+                            disallowJumps = (<ForStatement | ForInStatement | ForOfStatement | WhileStatement | DoStatement>n.parent).statement === n;
+                            break;
+                        case SyntaxKind.IfStatement:
+                            disallowJumps = (<IfStatement>n.parent).thenStatement === n || (<IfStatement>n.parent).elseStatement === n;
+                            break;
+                        case SyntaxKind.TryStatement:
+                            disallowJumps = (<TryStatement>n.parent).tryBlock === n || (<TryStatement>n.parent).finallyBlock === n;
+                            break;
+                        case SyntaxKind.CatchClause:
+                            disallowJumps = (<CatchClause>n.parent).block === n;
+                            break;
+                    }
+                }
+                switch (n.kind) {
+                    case SyntaxKind.AwaitExpression:
+                    case SyntaxKind.YieldExpression:
+                    case SyntaxKind.ReturnStatement:
+                    case SyntaxKind.BreakStatement:
+                    case SyntaxKind.ContinueStatement:
+                        if (disallowJumps) {
+                            canExtract = false;
+                        }
                         break;
-                    case SyntaxKind.IfStatement:
-                        disallowJumps = (<IfStatement>n.parent).thenStatement === n || (<IfStatement>n.parent).elseStatement === n;
-                        break;
-                    case SyntaxKind.TryStatement:
-                        disallowJumps = (<TryStatement>n.parent).tryBlock === n || (<TryStatement>n.parent).finallyBlock === n;
-                        break;
-                    case SyntaxKind.CatchClause:
-                        disallowJumps = (<CatchClause>n.parent).block === n;
+                    default:
+                        forEachChild(n, visit);
                         break;
                 }
-            }
-            switch (n.kind) {
-                case SyntaxKind.AwaitExpression:
-                case SyntaxKind.YieldExpression:
-                case SyntaxKind.ReturnStatement:
-                case SyntaxKind.BreakStatement:
-                case SyntaxKind.ContinueStatement:
-                    if (disallowJumps) {
-                        isBadSpan = true;
-                    }
-                    break;
-                default:
-                    forEachChild(n, checkNodesInSpan);
-                    break;
-            }
 
             disallowJumps = savedDisallowJumps;
         }
@@ -181,4 +208,5 @@ namespace ts.codefix.extractMethod {
     //         return visitEachChild(n, visitor, nullLexicalEnvironment);
     //     }
     // }
+    }
 }
