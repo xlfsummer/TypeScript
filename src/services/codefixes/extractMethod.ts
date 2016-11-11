@@ -17,36 +17,6 @@ namespace ts.codefix.extractMethod {
         // return collectEnclosingScopes(range).map(scope => extractMethodInScope(range, scope, checker));
     }
 
-    function spanContainsNode(span: TextSpan, node: Node, file: SourceFile): boolean {
-        return textSpanContainsPosition(span, node.getStart(file)) &&
-            node.getEnd() <= textSpanEnd(span);
-    }
-
-    function getParentNodeInSpan(n: Node, file: SourceFile, span: TextSpan): Node {
-        while (n) {
-            if (!n.parent) {
-                return undefined;
-            }
-            if (isSourceFile(n.parent) || !spanContainsNode(span, n.parent, file)) {
-                return n;
-            }
-
-            n = n.parent;
-        }
-    }
-
-    function isBlockLike(n: Node): n is BlockLike {
-        switch (n.kind) {
-            case SyntaxKind.Block:
-            case SyntaxKind.SourceFile:
-            case SyntaxKind.ModuleBlock:
-            case SyntaxKind.CaseClause:
-                return true;
-            default:
-                return false;
-        }
-    }
-
     export function getRangeToExtract(sourceFile: SourceFile, span: TextSpan): RangeToExtract | undefined {
         const start = getParentNodeInSpan(getTokenAtPosition(sourceFile, span.start), sourceFile, span);
         const end = getParentNodeInSpan(findTokenOnLeftOfPosition(sourceFile, textSpanEnd(span)), sourceFile, span);
@@ -200,19 +170,6 @@ namespace ts.codefix.extractMethod {
             }
         }
 
-        // function collectEnclosingScopes(range: RangeToExtract) {
-        //     // 2. collect enclosing scopes
-        //     const scopes: (FunctionLikeDeclaration | SourceFile)[] = [];
-        //     let current: Node = isArray(range) ? firstOrUndefined(range) : range;
-        //     while (current) {
-        //         if (isFunctionLike(current) || isSourceFile(current)) {
-        //             scopes.push(current);
-        //         }
-        //         current = current.parent;
-        //     }
-        //     return scopes;
-        // }
-
         // const nullLexicalEnvironment: LexicalEnvironment = {
         //     startLexicalEnvironment: noop,
         //     endLexicalEnvironment: () => emptyArray
@@ -269,4 +226,48 @@ namespace ts.codefix.extractMethod {
         //     }
         // }
     }
+
+    export function collectEnclosingScopes(range: RangeToExtract) {
+        // 2. collect enclosing scopes
+        const scopes: (FunctionLikeDeclaration | SourceFile)[] = [];
+        let current: Node = isArray(range) ? firstOrUndefined(range) : range;
+        while (current) {
+            if (isFunctionLike(current) || isSourceFile(current)) {
+                scopes.push(current);
+            }
+            current = current.parent;
+        }
+        return scopes;
+    }
+
+    function spanContainsNode(span: TextSpan, node: Node, file: SourceFile): boolean {
+        return textSpanContainsPosition(span, node.getStart(file)) &&
+            node.getEnd() <= textSpanEnd(span);
+    }
+
+    function getParentNodeInSpan(n: Node, file: SourceFile, span: TextSpan): Node {
+        while (n) {
+            if (!n.parent) {
+                return undefined;
+            }
+            if (isSourceFile(n.parent) || !spanContainsNode(span, n.parent, file)) {
+                return n;
+            }
+
+            n = n.parent;
+        }
+    }
+
+    function isBlockLike(n: Node): n is BlockLike {
+        switch (n.kind) {
+            case SyntaxKind.Block:
+            case SyntaxKind.SourceFile:
+            case SyntaxKind.ModuleBlock:
+            case SyntaxKind.CaseClause:
+                return true;
+            default:
+                return false;
+        }
+    }
+
 }
