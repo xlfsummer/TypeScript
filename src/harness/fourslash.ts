@@ -514,31 +514,6 @@ namespace FourSlash {
             }
         }
 
-        public verifyRangeToExtract(selection: { startMarker: string, endMarker: string }, expected: Range) {
-            const file = this.languageService.getProgram().getSourceFile(this.activeFile.fileName);
-            const start = this.getMarkerByName(selection.startMarker).position;
-            const end = this.getMarkerByName(selection.endMarker).position;
-            const span = ts.createTextSpan(start, end - start);
-            const expectedRange = ts.codefix.extractMethod.getRangeToExtract(file, span);
-            if (!expected) {
-                assert.isTrue(!expectedRange, "expected no range");
-            }
-            else {
-                assert.isTrue(!!expectedRange, "got no range");
-                let start: number, end: number;
-                if (ts.isArray(expectedRange)) {
-                    start = expectedRange[0].getStart(file);
-                    end = ts.lastOrUndefined(expectedRange).getEnd();
-                }
-                else {
-                    start = expectedRange.getStart(file);
-                    end = expectedRange.getEnd();
-                }
-                assert.equal(start, expected.start, "start");
-                assert.equal(end, expected.end, "end");
-            }
-        }
-
         public verifyEval(expr: string, value: any) {
             const emit = this.languageService.getEmitOutput(this.activeFile.fileName);
             if (emit.outputFiles.length !== 1) {
@@ -2523,7 +2498,7 @@ namespace FourSlash {
     function runCode(code: string, state: TestState): void {
         // Compile and execute the test
         const wrappedCode =
-            `(function(test, goTo, verify, edit, debug, format, cancellation, classification, verifyOperationIsCancelled, codefixes) {
+            `(function(test, goTo, verify, edit, debug, format, cancellation, classification, verifyOperationIsCancelled) {
 ${code}
 })`;
         try {
@@ -2534,9 +2509,8 @@ ${code}
             const debug = new FourSlashInterface.Debug(state);
             const format = new FourSlashInterface.Format(state);
             const cancellation = new FourSlashInterface.Cancellation(state);
-            const codeFixes = new FourSlashInterface.Codefixes(state);
             const f = eval(wrappedCode);
-            f(test, goTo, verify, edit, debug, format, cancellation, FourSlashInterface.Classification, FourSlash.verifyOperationIsCancelled, codeFixes);
+            f(test, goTo, verify, edit, debug, format, cancellation, FourSlashInterface.Classification, FourSlash.verifyOperationIsCancelled);
         }
         catch (err) {
             // Debugging: FourSlash.currentTestState.printCurrentFileState();
@@ -3043,23 +3017,6 @@ namespace FourSlashInterface {
         public file(name: string, content?: string, scriptKindName?: string): void;
         public file(indexOrName: any, content?: string, scriptKindName?: string): void {
             this.state.openFile(indexOrName, content, scriptKindName);
-        }
-    }
-
-    export class Codefixes {
-        readonly extractMethod: ExtractMethod;
-
-        constructor(state: FourSlash.TestState) {
-            this.extractMethod = new ExtractMethod(state);
-        }
-    }
-
-    export class ExtractMethod {
-        constructor(private readonly state: FourSlash.TestState) {
-        }
-
-        public verifyRangeToExtract(selection: { startMarker: string, endMarker: string }, expected?: FourSlash.Range) {
-            this.state.verifyRangeToExtract(selection, expected);
         }
     }
 
