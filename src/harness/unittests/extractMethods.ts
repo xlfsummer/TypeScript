@@ -20,7 +20,7 @@ namespace ts {
         const ranges = createMap<Range>();
 
         while (pos < source.length) {
-            if (source.charCodeAt(pos) === CharacterCodes.openBracket && 
+            if (source.charCodeAt(pos) === CharacterCodes.openBracket &&
                 (source.charCodeAt(pos + 1) === CharacterCodes.hash || source.charCodeAt(pos + 1) === CharacterCodes.$)) {
                 const saved = pos;
                 pos += 2;
@@ -32,8 +32,8 @@ namespace ts {
                     text += source.substring(lastPos, saved);
                     const name = s === e
                         ? source.charCodeAt(saved + 1) === CharacterCodes.hash ? "selection" : "extracted"
-                        : source.substring(s, e)
-                    activeRanges.push( {name, start: text.length, end: undefined} );
+                        : source.substring(s, e);
+                    activeRanges.push({ name, start: text.length, end: undefined });
                     lastPos = pos;
                     continue;
                 }
@@ -52,17 +52,17 @@ namespace ts {
                 pos += 2;
                 lastPos = pos;
                 continue;
-            } 
+            }
             pos++;
         }
-        text += source.substring(lastPos, pos)
+        text += source.substring(lastPos, pos);
 
         function consumeIdentifier() {
             while (isIdentifierPart(source.charCodeAt(pos), ScriptTarget.Latest)) {
                 pos++;
             }
         }
-        return { source: text, ranges }
+        return { source: text, ranges };
     }
 
     function testExtractRange(s: string): void {
@@ -85,7 +85,7 @@ namespace ts {
                 end = actualRange.getEnd();
             }
             assert.equal(start, expectedRange.start, "incorrect start of range");
-            assert.equal(end, expectedRange.end, "incorrect end of range"); 
+            assert.equal(end, expectedRange.end, "incorrect end of range");
         }
         else {
             assert.isTrue(!actualRange, `expected range to extract to be undefined`);
@@ -93,7 +93,7 @@ namespace ts {
     }
 
     describe("extractMethods", () => {
-        it ("get extract range from selection", () => {
+        it("get extract range from selection", () => {
             debugger;
             testExtractRange(`
                 [#|
