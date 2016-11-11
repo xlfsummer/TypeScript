@@ -261,6 +261,7 @@ var harnessSources = harnessCoreSources.concat([
     "projectErrors.ts",
     "matchFiles.ts",
     "initializeTSConfig.ts",
+    "extractMethods.ts",
 ].map(function (f) {
     return path.join(unittestsDirectory, f);
 })).concat([
