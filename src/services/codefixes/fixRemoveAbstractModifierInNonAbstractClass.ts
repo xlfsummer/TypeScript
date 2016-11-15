@@ -10,8 +10,8 @@ namespace ts.codefix {
             Debug.assert(token.kind === SyntaxKind.AbstractKeyword);
 
             const propertyDeclaration = <PropertyDeclaration>token.parent;
-            const classDeclaration = <ClassDeclaration>propertyDeclaration.parent;
-            const classKeywordStart = classDeclaration.getChildren()[0].getStart();
+            const classLikeDeclaration = <ClassLikeDeclaration>propertyDeclaration.parent;
+            const classKeywordStart = classLikeDeclaration.getStart();
 
             return [
                 {
@@ -25,7 +25,7 @@ namespace ts.codefix {
                     }]
                 },
                 {
-                    description: `Make class ${classDeclaration.name.getText()} abstract.`,
+                    description: `Make class ${classLikeDeclaration.name.getText()} abstract.`,
                     changes: [{
                         fileName: sourceFile.fileName,
                         textChanges: [{
