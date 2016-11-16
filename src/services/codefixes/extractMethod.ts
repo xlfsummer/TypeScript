@@ -7,14 +7,38 @@ namespace ts.codefix.extractMethod {
 
     export type RangeToExtract = Expression | Statement[];
 
+    export type Scope = FunctionLikeDeclaration | SourceFile;
+
     function extractMethod(context: CodeFixContext): CodeAction[] | undefined {
         const range = getRangeToExtract(context.sourceFile, context.span);
         if (!range) {
             return undefined;
         }
-        // const checker = context.program.getTypeChecker();
+        const checker = context.program.getTypeChecker();
+        const enclosingSpan = getEnclosingTextSpan(range, context.sourceFile);
+        const scopes = collectEnclosingScopes(range);
+
         // // TODO: collecting data in scopes probably can be incremental
-        // return collectEnclosingScopes(range).map(scope => extractMethodInScope(range, scope, checker));
+        let result: CodeAction[];
+        for (const scope of scopes) {
+            const textChanges = extractRangeInScope(range, enclosingSpan, scope, context.sourceFile, checker);
+            if (!textChanges) {
+                continue;
+            }
+            const codeAction: CodeAction = {
+                description: getDescription(range, scope),
+                textChanges:[{
+                    fileName: context.sourceFile.fileName,
+                    textChanges
+                }]
+            };
+            (result || (result = [])).push(codeAction);
+        }
+        return result;
+    }
+
+    function getDescription(_range: RangeToExtract, _scope: Scope) {
+        return "";
     }
 
     export function getRangeToExtract(sourceFile: SourceFile, span: TextSpan): RangeToExtract | undefined {
@@ -170,6 +194,8 @@ namespace ts.codefix.extractMethod {
             }
         }
 
+
+
         // const nullLexicalEnvironment: LexicalEnvironment = {
         //     startLexicalEnvironment: noop,
         //     endLexicalEnvironment: () => emptyArray
@@ -229,7 +255,7 @@ namespace ts.codefix.extractMethod {
 
     export function collectEnclosingScopes(range: RangeToExtract) {
         // 2. collect enclosing scopes
-        const scopes: (FunctionLikeDeclaration | SourceFile)[] = [];
+        const scopes: Scope[] = [];
         let current: Node = isArray(range) ? firstOrUndefined(range) : range;
         while (current) {
             if (isFunctionLike(current) || isSourceFile(current)) {
@@ -238,6 +264,86 @@ namespace ts.codefix.extractMethod {
             current = current.parent;
         }
         return scopes;
+    }
+
+    const nullLexicalEnvironment: LexicalEnvironment = {
+        startLexicalEnvironment: noop,
+        endLexicalEnvironment: () => undefined
+    }
+
+    function isUnaryExpressionConsideredAsWrite(n: Node): boolean {
+        switch (n.kind) {
+            case SyntaxKind.PostfixUnaryExpression:
+                return true;
+            case SyntaxKind.PrefixUnaryExpression:
+                return (<PrefixUnaryExpression>n).operator === SyntaxKind.PlusPlusToken ||
+                    (<PrefixUnaryExpression>n).operator === SyntaxKind.MinusMinusToken;
+            default:
+                return false;
+        }
+    }
+
+    export function extractRangeInScope(range: RangeToExtract, enclosingSpan: TextSpan, scope: Scope, sourceFile: SourceFile, checker: TypeChecker): TextChange[] {
+        let extractedFunctionBody: Statement;
+        if (isArray(range)) {
+            // list of statements
+            extractedFunctionBody = createBlock(visitNodes(createNodeArray(range), visitor, isStatement));
+        }
+        else {
+            // single expression - extracted into function with a return
+            const visited = visitNode(range, visitor, isExpression);
+            // TODO: return should also include values that flows out
+            extractedFunctionBody = createReturn(visited);
+        }
+
+        let lastLhsOfAssignment: Node;
+        function lhsVisitor(n: Node): Node {
+            if (n.kind === SyntaxKind.Identifier) {
+                // record write
+            }
+            else if (isBindingPattern(n)) {
+                // visit binding patterns, record writes
+            }
+            return visitEachChild(n, lhsVisitor, nullLexicalEnvironment);
+        }
+
+        function visitor(n: Node): Node {
+            if (n === lastLhsOfAssignment) {
+                return lhsVisitor(n);
+            }
+            if (isAssignmentExpression(n)) {
+                const savedLastLhsOfAssignment = lastLhsOfAssignment;
+                lastLhsOfAssignment = (<BinaryExpression>n).left;
+                const result = visitEachChild(n, visitor, nullLexicalEnvironment);
+                lastLhsOfAssignment = savedLastLhsOfAssignment;
+                return result;
+            }
+            else if (isUnaryExpressionConsideredAsWrite(n)) {
+                return lhsVisitor()
+            }
+            if (n.kind === SyntaxKind.Identifier) {
+                if (isPartOfExpression(n)) {
+                    const symbol = checker.getSymbolAtLocation(n);
+                    if (symbol && symbol.valueDeclaration) {
+                        // if value declaration of a symbol is either outside of the scope of inside the enclosing span
+                        // then node can be kept as is
+                        // otherwise it should be rewritten 
+                    }
+                }
+                else if (isPartOfTypeNode(n)) {
+
+                }
+            }
+            else if (n.kind === SyntaxKind.ThisKeyword) {
+                // TODO block cases when this keyword cannot be used 
+            }
+        }
+    }
+
+    function getEnclosingTextSpan(range: RangeToExtract, sourceFile: SourceFile) {
+        return isArray(range)
+            ? createTextSpanFromBounds(range[0].getStart(sourceFile), lastOrUndefined(range).getEnd())
+            : createTextSpanFromBounds(range.getStart(sourceFile), range.getEnd());
     }
 
     function spanContainsNode(span: TextSpan, node: Node, file: SourceFile): boolean {
