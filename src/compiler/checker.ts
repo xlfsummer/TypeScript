@@ -3030,7 +3030,7 @@ namespace ts {
         }
 
         function isComputedNonLiteralName(name: PropertyName): boolean {
-            return name.kind === SyntaxKind.ComputedPropertyName && !isStringOrNumericLiteral((<ComputedPropertyName>name).expression.kind);
+            return name.kind === SyntaxKind.ComputedPropertyName && !isStringOrNumericLiteral((<ComputedPropertyName>name).expression);
         }
 
         function getRestType(source: Type, properties: PropertyName[], symbol: Symbol): Type {
@@ -3081,7 +3081,7 @@ namespace ts {
                     }
                     const literalMembers: PropertyName[] = [];
                     for (const element of pattern.elements) {
-                        if (element.kind !== SyntaxKind.OmittedExpression && !(element as BindingElement).dotDotDotToken) {
+                        if (!(element as BindingElement).dotDotDotToken) {
                             literalMembers.push(element.propertyName || element.name as Identifier);
                         }
                     }
@@ -4489,6 +4489,8 @@ namespace ts {
             const members: SymbolTable = createMap<Symbol>();
             let stringIndexInfo: IndexInfo;
             let numberIndexInfo: IndexInfo;
+            // Resolve upfront such that recursive references see an empty object type.
+            setStructuredTypeMembers(type, emptySymbols, emptyArray, emptyArray, undefined, undefined);
             // In { [P in K]: T }, we refer to P as the type parameter type, K as the constraint type,
             // and T as the template type.
             const typeParameter = getTypeParameterFromMappedType(type);
@@ -4548,6 +4550,10 @@ namespace ts {
                 (type.templateType = type.declaration.type ?
                     instantiateType(getTypeFromTypeNode(type.declaration.type), type.mapper || identityMapper) :
                     unknownType);
+        }
+
+        function getErasedTemplateTypeFromMappedType(type: MappedType) {
+            return instantiateType(getTemplateTypeFromMappedType(type), createUnaryTypeMapper(getTypeParameterFromMappedType(type), anyType));
         }
 
         function isGenericMappedType(type: Type) {
@@ -7190,29 +7196,18 @@ namespace ts {
                             return result;
                         }
                     }
-                    if (isGenericMappedType(target)) {
-                        // A type [P in S]: X is related to a type [P in T]: Y if T is related to S and X is related to Y.
-                        if (isGenericMappedType(source)) {
-                            if ((result = isRelatedTo(getConstraintTypeFromMappedType(<MappedType>target), getConstraintTypeFromMappedType(<MappedType>source), reportErrors)) &&
-                                (result = isRelatedTo(getTemplateTypeFromMappedType(<MappedType>source), getTemplateTypeFromMappedType(<MappedType>target), reportErrors))) {
-                                return result;
-                            }
-                        }
-                    }
-                    else {
-                        // Even if relationship doesn't hold for unions, intersections, or generic type references,
-                        // it may hold in a structural comparison.
-                        const apparentSource = getApparentType(source);
-                        // In a check of the form X = A & B, we will have previously checked if A relates to X or B relates
-                        // to X. Failing both of those we want to check if the aggregation of A and B's members structurally
-                        // relates to X. Thus, we include intersection types on the source side here.
-                        if (apparentSource.flags & (TypeFlags.Object | TypeFlags.Intersection) && target.flags & TypeFlags.Object) {
-                            // Report structural errors only if we haven't reported any errors yet
-                            const reportStructuralErrors = reportErrors && errorInfo === saveErrorInfo && !(source.flags & TypeFlags.Primitive);
-                            if (result = objectTypeRelatedTo(apparentSource, source, target, reportStructuralErrors)) {
-                                errorInfo = saveErrorInfo;
-                                return result;
-                            }
+                    // Even if relationship doesn't hold for unions, intersections, or generic type references,
+                    // it may hold in a structural comparison.
+                    const apparentSource = getApparentType(source);
+                    // In a check of the form X = A & B, we will have previously checked if A relates to X or B relates
+                    // to X. Failing both of those we want to check if the aggregation of A and B's members structurally
+                    // relates to X. Thus, we include intersection types on the source side here.
+                    if (apparentSource.flags & (TypeFlags.Object | TypeFlags.Intersection) && target.flags & TypeFlags.Object) {
+                        // Report structural errors only if we haven't reported any errors yet
+                        const reportStructuralErrors = reportErrors && errorInfo === saveErrorInfo && !(source.flags & TypeFlags.Primitive);
+                        if (result = objectTypeRelatedTo(apparentSource, source, target, reportStructuralErrors)) {
+                            errorInfo = saveErrorInfo;
+                            return result;
                         }
                     }
                 }
@@ -7441,6 +7436,9 @@ namespace ts {
                 if (expandingFlags === 3) {
                     result = Ternary.Maybe;
                 }
+                else if (isGenericMappedType(source) || isGenericMappedType(target)) {
+                    result = mappedTypeRelatedTo(source, target, reportErrors);
+                }
                 else {
                     result = propertiesRelatedTo(source, target, reportErrors);
                     if (result) {
@@ -7470,6 +7468,30 @@ namespace ts {
                     relation[id] = reportErrors ? RelationComparisonResult.FailedAndReported : RelationComparisonResult.Failed;
                 }
                 return result;
+            }
+
+            // A type [P in S]: X is related to a type [P in T]: Y if T is related to S and X is related to Y.
+            function mappedTypeRelatedTo(source: Type, target: Type, reportErrors: boolean): Ternary {
+                if (isGenericMappedType(source) && isGenericMappedType(target)) {
+                    let result: Ternary;
+                    if (relation === identityRelation) {
+                        const readonlyMatches = !(<MappedType>source).declaration.readonlyToken === !(<MappedType>target).declaration.readonlyToken;
+                        const optionalMatches = !(<MappedType>source).declaration.questionToken === !(<MappedType>target).declaration.questionToken;
+                        if (readonlyMatches && optionalMatches) {
+                            if (result = isRelatedTo(getConstraintTypeFromMappedType(<MappedType>target), getConstraintTypeFromMappedType(<MappedType>source), reportErrors)) {
+                                return result & isRelatedTo(getErasedTemplateTypeFromMappedType(<MappedType>source), getErasedTemplateTypeFromMappedType(<MappedType>target), reportErrors);
+                            }
+                        }
+                    }
+                    else {
+                        if (relation === comparableRelation || !(<MappedType>source).declaration.questionToken || (<MappedType>target).declaration.questionToken) {
+                            if (result = isRelatedTo(getConstraintTypeFromMappedType(<MappedType>target), getConstraintTypeFromMappedType(<MappedType>source), reportErrors)) {
+                                return result & isRelatedTo(getTemplateTypeFromMappedType(<MappedType>source), getTemplateTypeFromMappedType(<MappedType>target), reportErrors);
+                            }
+                        }
+                    }
+                }
+                return Ternary.False;
             }
 
             function propertiesRelatedTo(source: Type, target: Type, reportErrors: boolean): Ternary {
@@ -7536,7 +7558,8 @@ namespace ts {
                                 return Ternary.False;
                             }
                             result &= related;
-                            if (sourceProp.flags & SymbolFlags.Optional && !(targetProp.flags & SymbolFlags.Optional)) {
+                            // When checking for comparability, be more lenient with optional properties.
+                            if (relation !== comparableRelation && sourceProp.flags & SymbolFlags.Optional && !(targetProp.flags & SymbolFlags.Optional)) {
                                 // TypeScript 1.0 spec (April 2014): 3.8.3
                                 // S is a subtype of a type T, and T is a supertype of S if ...
                                 // S' and T are object types and, for each member M in T..
@@ -8906,7 +8929,7 @@ namespace ts {
             return type;
         }
 
-        function getTypeOfDestructuredProperty(type: Type, name: Identifier | LiteralExpression | ComputedPropertyName) {
+        function getTypeOfDestructuredProperty(type: Type, name: PropertyName) {
             const text = getTextOfPropertyName(name);
             return getTypeOfPropertyOfType(type, text) ||
                 isNumericLiteralName(text) && getIndexTypeOfType(type, IndexKind.Number) ||
@@ -9720,20 +9743,20 @@ namespace ts {
                 }
 
                 if (targetType) {
-                    return getNarrowedType(type, targetType, assumeTrue);
+                    return getNarrowedType(type, targetType, assumeTrue, isTypeInstanceOf);
                 }
 
                 return type;
             }
 
-            function getNarrowedType(type: Type, candidate: Type, assumeTrue: boolean) {
+            function getNarrowedType(type: Type, candidate: Type, assumeTrue: boolean, isRelated: (source: Type, target: Type) => boolean) {
                 if (!assumeTrue) {
-                    return filterType(type, t => !isTypeInstanceOf(t, candidate));
+                    return filterType(type, t => !isRelated(t, candidate));
                 }
                 // If the current type is a union type, remove all constituents that couldn't be instances of
                 // the candidate type. If one or more constituents remain, return a union of those.
                 if (type.flags & TypeFlags.Union) {
-                    const assignableType = filterType(type, t => isTypeInstanceOf(t, candidate));
+                    const assignableType = filterType(type, t => isRelated(t, candidate));
                     if (!(assignableType.flags & TypeFlags.Never)) {
                         return assignableType;
                     }
@@ -9769,7 +9792,7 @@ namespace ts {
                     const predicateArgument = callExpression.arguments[predicate.parameterIndex];
                     if (predicateArgument) {
                         if (isMatchingReference(reference, predicateArgument)) {
-                            return getNarrowedType(type, predicate.type, assumeTrue);
+                            return getNarrowedType(type, predicate.type, assumeTrue, isTypeSubtypeOf);
                         }
                         if (containsMatchingReference(reference, predicateArgument)) {
                             return declaredType;
@@ -9782,7 +9805,7 @@ namespace ts {
                         const accessExpression = invokedExpression as ElementAccessExpression | PropertyAccessExpression;
                         const possibleReference = skipParentheses(accessExpression.expression);
                         if (isMatchingReference(reference, possibleReference)) {
-                            return getNarrowedType(type, predicate.type, assumeTrue);
+                            return getNarrowedType(type, predicate.type, assumeTrue, isTypeSubtypeOf);
                         }
                         if (containsMatchingReference(reference, possibleReference)) {
                             return declaredType;
@@ -9935,8 +9958,7 @@ namespace ts {
                 // Due to the emit for class decorators, any reference to the class from inside of the class body
                 // must instead be rewritten to point to a temporary variable to avoid issues with the double-bind
                 // behavior of class names in ES6.
-                if (languageVersion === ScriptTarget.ES2015
-                    && declaration.kind === SyntaxKind.ClassDeclaration
+                if (declaration.kind === SyntaxKind.ClassDeclaration
                     && nodeIsDecorated(declaration)) {
                     let container = getContainingClass(node);
                     while (container !== undefined) {
@@ -11164,10 +11186,10 @@ namespace ts {
             return links.resolvedType;
         }
 
-        function getObjectLiteralIndexInfo(node: ObjectLiteralExpression, properties: Symbol[], kind: IndexKind): IndexInfo {
+        function getObjectLiteralIndexInfo(propertyNodes: NodeArray<ObjectLiteralElementLike>, offset: number, properties: Symbol[], kind: IndexKind): IndexInfo {
             const propTypes: Type[] = [];
             for (let i = 0; i < properties.length; i++) {
-                if (kind === IndexKind.String || isNumericName(node.properties[i].name)) {
+                if (kind === IndexKind.String || isNumericName(propertyNodes[i + offset].name)) {
                     propTypes.push(getTypeOfSymbol(properties[i]));
                 }
             }
@@ -11193,7 +11215,9 @@ namespace ts {
             let hasComputedStringProperty = false;
             let hasComputedNumberProperty = false;
 
-            for (const memberDecl of node.properties) {
+            let offset = 0;
+            for (let i = 0; i < node.properties.length; i++) {
+                const memberDecl = node.properties[i];
                 let member = memberDecl.symbol;
                 if (memberDecl.kind === SyntaxKind.PropertyAssignment ||
                     memberDecl.kind === SyntaxKind.ShorthandPropertyAssignment ||
@@ -11262,6 +11286,7 @@ namespace ts {
                         return unknownType;
                     }
                     spread = getSpreadType(spread, type, /*isFromObjectLiteral*/ false);
+                    offset = i + 1;
                     continue;
                 }
                 else {
@@ -11315,8 +11340,8 @@ namespace ts {
             return createObjectLiteralType();
 
             function createObjectLiteralType() {
-                const stringIndexInfo = hasComputedStringProperty ? getObjectLiteralIndexInfo(node, propertiesArray, IndexKind.String) : undefined;
-                const numberIndexInfo = hasComputedNumberProperty ? getObjectLiteralIndexInfo(node, propertiesArray, IndexKind.Number) : undefined;
+                const stringIndexInfo = hasComputedStringProperty ? getObjectLiteralIndexInfo(node.properties, offset, propertiesArray, IndexKind.String) : undefined;
+                const numberIndexInfo = hasComputedNumberProperty ? getObjectLiteralIndexInfo(node.properties, offset, propertiesArray, IndexKind.Number) : undefined;
                 const result = createAnonymousType(node.symbol, propertiesTable, emptyArray, emptyArray, stringIndexInfo, numberIndexInfo);
                 const freshObjectLiteralFlag = compilerOptions.suppressExcessPropertyErrors ? 0 : TypeFlags.FreshLiteral;
                 result.flags |= TypeFlags.ContainsObjectLiteral | freshObjectLiteralFlag | (typeFlags & TypeFlags.PropagatingFlags);
@@ -14198,9 +14223,7 @@ namespace ts {
                 }
             }
             else if (property.kind === SyntaxKind.SpreadAssignment) {
-                if (property.expression.kind !== SyntaxKind.Identifier) {
-                    error(property.expression, Diagnostics.An_object_rest_element_must_be_an_identifier);
-                }
+                checkReferenceExpression(property.expression, Diagnostics.The_target_of_an_object_rest_assignment_must_be_a_variable_or_a_property_access);
             }
             else {
                 error(property, Diagnostics.Property_assignment_expected);
@@ -14502,6 +14525,8 @@ namespace ts {
                 case SyntaxKind.LessThanEqualsToken:
                 case SyntaxKind.GreaterThanEqualsToken:
                     if (checkForDisallowedESSymbolOperand(operator)) {
+                        leftType = getBaseTypeOfLiteralType(leftType);
+                        rightType = getBaseTypeOfLiteralType(rightType);
                         if (!isTypeComparableTo(leftType, rightType) && !isTypeComparableTo(rightType, leftType)) {
                             reportOperatorError();
                         }
@@ -17256,11 +17281,15 @@ namespace ts {
         function checkElementTypeOfArrayOrString(arrayOrStringType: Type, errorNode: Node): Type {
             Debug.assert(languageVersion < ScriptTarget.ES2015);
 
-            // After we remove all types that are StringLike, we will know if there was a string constituent
-            // based on whether the remaining type is the same as the initial type.
             let arrayType = arrayOrStringType;
             if (arrayOrStringType.flags & TypeFlags.Union) {
-                arrayType = getUnionType(filter((arrayOrStringType as UnionType).types, t => !(t.flags & TypeFlags.StringLike)), /*subtypeReduction*/ true);
+                // After we remove all types that are StringLike, we will know if there was a string constituent
+                // based on whether the result of filter is a new array.
+                const arrayTypes = (arrayOrStringType as UnionType).types;
+                const filteredTypes = filter(arrayTypes, t => !(t.flags & TypeFlags.StringLike));
+                if (filteredTypes !== arrayTypes) {
+                    arrayType = getUnionType(filteredTypes, /*subtypeReduction*/ true);
+                }
             }
             else if (arrayOrStringType.flags & TypeFlags.StringLike) {
                 arrayType = neverType;
@@ -19603,7 +19632,7 @@ namespace ts {
 
         function isNameOfModuleOrEnumDeclaration(node: Identifier) {
             const parent = node.parent;
-            return isModuleOrEnumDeclaration(parent) && node === parent.name;
+            return parent && isModuleOrEnumDeclaration(parent) && node === parent.name;
         }
 
         // When resolved as an expression identifier, if the given node references an exported entity, return the declaration
