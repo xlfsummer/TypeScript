@@ -259,11 +259,12 @@ namespace ts.codefix.extractMethod {
         }
     }
 
-    export function extractRange(range: RangeToExtract, sourceFile: SourceFile, checker: TypeChecker): CodeAction[] {
+    export function extractRange(range: RangeToExtract, sourceFile: SourceFile, program: Program, cancellationToken: CancellationToken): CodeAction[] {
         // 1. collect scopes where new function can be placed
         const scopes = collectEnclosingScopes(range);
         const enclosingRange = getEnclosingTextRange(range, sourceFile);
         
+        const checker = program.getTypeChecker();
         // for every scope - list of values that flow into the range
         const flowOut = new Array<Symbol[]>(scopes.length);
         // for every scope - list of values that flow out of the range
@@ -274,6 +275,7 @@ namespace ts.codefix.extractMethod {
         const processedReads = createMap<Symbol>();
         // set of processed symbol that were referenced in range as writes
         const processedWrites = createMap<Symbol>();
+        const references = createMap<ReferencedSymbol[]>();
 
         let extractedFunctionBody: Statement;
         
@@ -290,6 +292,13 @@ namespace ts.codefix.extractMethod {
 
         return;
 
+        function findReferences(symbol: Symbol) {
+            const result = references[symbol.id];
+            return result || (references[symbol.id] = FindAllReferences.findReferencedSymbols(checker, cancellationToken,
+                program.getSourceFiles(), symbol.valueDeclaration.getSourceFile(), symbol.valueDeclaration.end,
+               /*findInStrings*/ false, /*findInComments*/ false));
+        }
+
         function visitor(n: Node): Node {
             switch (n.kind) {
                 case SyntaxKind.Identifier:
@@ -303,7 +312,17 @@ namespace ts.codefix.extractMethod {
                             if (symbol.id in processedWrites) {
                                 return n;
                             }
-
+                            processedWrites[symbol.id] = symbol;
+                            const references = findReferences(symbol);
+                            for (let i = 0; i < scopes.length; i++) {
+                                const current = scopes[i];
+                                for (const refSymbol of references) {
+                                    for (const ref of refSymbol.references) {
+                                        // if scope 
+                                    }
+                                    ref.references[0]
+                                }
+                            }
                             // TODO: record writes
                         }
                         else {
