@@ -1,7 +1,5 @@
 /// <reference path='fourslash.ts' />
 
-// Should define spans for replacement that appear after the last directory seperator in triple slash references
-
 // @typeRoots: my_typings
 
 // @Filename: test.ts
@@ -21,13 +19,13 @@
 //// export var x = 9;
 
 goTo.marker("0");
-verify.completionListContains("someFile.ts", undefined, undefined, undefined, 0);
+verify.completionListContains("someFile.ts");
 
 goTo.marker("1");
-verify.completionListContains("some-module", undefined, undefined, undefined, 1);
+verify.completionListContains("some-module");
 
 goTo.marker("2");
-verify.completionListContains("someOtherFile.ts", undefined, undefined, undefined, 2);
+verify.completionListContains("someOtherFile.ts");
 
 goTo.marker("3");
-verify.completionListContains("some-module", undefined, undefined, undefined, 3);
+verify.completionListContains("some-module");

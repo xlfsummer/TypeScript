@@ -1,7 +1,5 @@
 /// <reference path='fourslash.ts' />
 
-// Should define spans for replacement that appear after the last directory seperator in import statements
-
 // @typeRoots: my_typings
 
 // @Filename: test.ts
@@ -21,13 +19,13 @@
 //// export var x = 9;
 
 goTo.marker("0");
-verify.completionListContains("someFile1", undefined, undefined, undefined, 0);
+verify.completionListContains("someFile1");
 
 goTo.marker("1");
-verify.completionListContains("someFile2", undefined, undefined, undefined, 1);
+verify.completionListContains("someFile2");
 
 goTo.marker("2");
-verify.completionListContains("some-module", undefined, undefined, undefined, 2);
+verify.completionListContains("some-module");
 
 goTo.marker("3");
-verify.completionListContains("fourslash", undefined, undefined, undefined, 3);
+verify.completionListContains("fourslash");
