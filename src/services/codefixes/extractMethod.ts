@@ -11,30 +11,7 @@ namespace ts.codefix.extractMethod {
 
     function extractMethod(context: CodeFixContext): CodeAction[] | undefined {
         const range = getRangeToExtract(context.sourceFile, context.span);
-        if (!range) {
-            return undefined;
-        }
-        const checker = context.program.getTypeChecker();
-        const enclosingSpan = getEnclosingTextSpan(range, context.sourceFile);
-        const scopes = collectEnclosingScopes(range);
-
-        // // TODO: collecting data in scopes probably can be incremental
-        let result: CodeAction[];
-        for (const scope of scopes) {
-            const textChanges = extractRangeInScope(range, enclosingSpan, scope, context.sourceFile, checker);
-            if (!textChanges) {
-                continue;
-            }
-            const codeAction: CodeAction = {
-                description: getDescription(range, scope),
-                textChanges:[{
-                    fileName: context.sourceFile.fileName,
-                    textChanges
-                }]
-            };
-            (result || (result = [])).push(codeAction);
-        }
-        return result;
+        return range && extractRange(range, context.sourceFile, context.program.getTypeChecker()); 
     }
 
     function getDescription(_range: RangeToExtract, _scope: Scope) {
@@ -266,12 +243,11 @@ namespace ts.codefix.extractMethod {
         return scopes;
     }
 
-    const nullLexicalEnvironment: LexicalEnvironment = {
-        startLexicalEnvironment: noop,
-        endLexicalEnvironment: () => undefined
-    }
+    const nullTransformationContext: TransformationContext = {
 
-    function isUnaryExpressionConsideredAsWrite(n: Node): boolean {
+    };
+
+    function unaryExpressionHasWrite(n: Node): boolean {
         switch (n.kind) {
             case SyntaxKind.PostfixUnaryExpression:
                 return true;
@@ -283,8 +259,24 @@ namespace ts.codefix.extractMethod {
         }
     }
 
-    export function extractRangeInScope(range: RangeToExtract, enclosingSpan: TextSpan, scope: Scope, sourceFile: SourceFile, checker: TypeChecker): TextChange[] {
+    export function extractRange(range: RangeToExtract, sourceFile: SourceFile, checker: TypeChecker): CodeAction[] {
+        // 1. collect scopes where new function can be placed
+        const scopes = collectEnclosingScopes(range);
+        const enclosingRange = getEnclosingTextRange(range, sourceFile);
+        
+        // for every scope - list of values that flow into the range
+        const flowOut = new Array<Symbol[]>(scopes.length);
+        // for every scope - list of values that flow out of the range
+        const flowIn = new Array<Symbol[]>(scopes.length);
+        // for every scope - variable declarations that reside in the range but were used outside
+        const visibleDeclarations = new Array<Symbol[]>(scopes.length);
+        // set of processed symbols that were referenced in range as reads
+        const processedReads = createMap<Symbol>();
+        // set of processed symbol that were referenced in range as writes
+        const processedWrites = createMap<Symbol>();
+
         let extractedFunctionBody: Statement;
+        
         if (isArray(range)) {
             // list of statements
             extractedFunctionBody = createBlock(visitNodes(createNodeArray(range), visitor, isStatement));
@@ -296,54 +288,50 @@ namespace ts.codefix.extractMethod {
             extractedFunctionBody = createReturn(visited);
         }
 
-        let lastLhsOfAssignment: Node;
-        function lhsVisitor(n: Node): Node {
-            if (n.kind === SyntaxKind.Identifier) {
-                // record write
-            }
-            else if (isBindingPattern(n)) {
-                // visit binding patterns, record writes
-            }
-            return visitEachChild(n, lhsVisitor, nullLexicalEnvironment);
-        }
+        return;
 
         function visitor(n: Node): Node {
-            if (n === lastLhsOfAssignment) {
-                return lhsVisitor(n);
-            }
-            if (isAssignmentExpression(n)) {
-                const savedLastLhsOfAssignment = lastLhsOfAssignment;
-                lastLhsOfAssignment = (<BinaryExpression>n).left;
-                const result = visitEachChild(n, visitor, nullLexicalEnvironment);
-                lastLhsOfAssignment = savedLastLhsOfAssignment;
-                return result;
-            }
-            else if (isUnaryExpressionConsideredAsWrite(n)) {
-                return lhsVisitor()
-            }
-            if (n.kind === SyntaxKind.Identifier) {
-                if (isPartOfExpression(n)) {
-                    const symbol = checker.getSymbolAtLocation(n);
-                    if (symbol && symbol.valueDeclaration) {
-                        // if value declaration of a symbol is either outside of the scope of inside the enclosing span
-                        // then node can be kept as is
-                        // otherwise it should be rewritten 
-                    }
-                }
-                else if (isPartOfTypeNode(n)) {
+            switch (n.kind) {
+                case SyntaxKind.Identifier:
+                    if (isPartOfExpression(n)) {
+                        const symbol = checker.getSymbolAtLocation(n);
+                        // no symbol, no value declaration or value declaration is in the range being extracted - skip it
+                        if (!symbol || !symbol.valueDeclaration || rangeContainsRange(enclosingRange, symbol.valueDeclaration)) {
+                            return n;
+                        }
+                        if (isAssignmentTarget(n)) {
+                            if (symbol.id in processedWrites) {
+                                return n;
+                            }
 
-                }
-            }
-            else if (n.kind === SyntaxKind.ThisKeyword) {
-                // TODO block cases when this keyword cannot be used 
+                            // TODO: record writes
+                        }
+                        else {
+                            if (symbol.id in processedReads) {
+                                return n;
+                            }
+                            
+                            // TODO: process read
+                        }
+                    }
+                    else if (isPartOfTypeNode(n)) {
+
+                    }
+                    break;
+                case SyntaxKind.ThisKeyword:
+                    break;
+                case SyntaxKind.VariableDeclaration:
+                    break;
+                default:
+                    return visitEachChild(n, visitor, nullTransformationContext);
             }
         }
     }
 
-    function getEnclosingTextSpan(range: RangeToExtract, sourceFile: SourceFile) {
+    function getEnclosingTextRange(range: RangeToExtract, sourceFile: SourceFile): TextRange {
         return isArray(range)
-            ? createTextSpanFromBounds(range[0].getStart(sourceFile), lastOrUndefined(range).getEnd())
-            : createTextSpanFromBounds(range.getStart(sourceFile), range.getEnd());
+            ? { pos: range[0].getStart(sourceFile), end: lastOrUndefined(range).getEnd() }
+            : range;
     }
 
     function spanContainsNode(span: TextSpan, node: Node, file: SourceFile): boolean {
