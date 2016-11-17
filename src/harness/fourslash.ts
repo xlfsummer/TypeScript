@@ -724,10 +724,10 @@ namespace FourSlash {
             }
         }
 
-        public verifyCompletionListContains(symbol: string, text?: string, documentation?: string, kind?: string, spanIndex?: number) {
+        public verifyCompletionListContains(symbol: string, text?: string, documentation?: string, kind?: string) {
             const completions = this.getCompletionListAtCaret();
             if (completions) {
-                this.assertItemInCompletionList(completions.entries, symbol, text, documentation, kind, spanIndex);
+                this.assertItemInCompletionList(completions.entries, symbol, text, documentation, kind);
             }
             else {
                 this.raiseError(`No completions at position '${this.currentCaretPosition}' when looking for '${symbol}'.`);
@@ -743,14 +743,9 @@ namespace FourSlash {
          * @param expectedText the text associated with the symbol
          * @param expectedDocumentation the documentation text associated with the symbol
          * @param expectedKind the kind of symbol (see ScriptElementKind)
-         * @param spanIndex the index of the range that the completion item's replacement text span should match
          */
-        public verifyCompletionListDoesNotContain(symbol: string, expectedText?: string, expectedDocumentation?: string, expectedKind?: string, spanIndex?: number) {
+        public verifyCompletionListDoesNotContain(symbol: string, expectedText?: string, expectedDocumentation?: string, expectedKind?: string) {
             const that = this;
-            let replacementSpan: ts.TextSpan;
-            if (spanIndex !== undefined) {
-                replacementSpan = this.getTextSpanForRangeAtIndex(spanIndex);
-            }
 
             function filterByTextOrDocumentation(entry: ts.CompletionEntry) {
                 const details = that.getCompletionEntryDetails(entry.name);
@@ -759,10 +754,7 @@ namespace FourSlash {
 
                 // If any of the expected values are undefined, assume that users don't
                 // care about them.
-                if (replacementSpan && !TestState.textSpansEqual(replacementSpan, entry.replacementSpan)) {
-                    return false;
-                }
-                else if (expectedText && text !== expectedText) {
+                if (expectedText && text !== expectedText) {
                     return false;
                 }
                 else if (expectedDocumentation && documentation !== expectedDocumentation) {
@@ -791,10 +783,6 @@ namespace FourSlash {
                     }
                     if (expectedKind) {
                         error += "Expected kind: " + expectedKind + " to equal: " + filterCompletions[0].kind + ".";
-                    }
-                    if (replacementSpan) {
-                        const spanText = filterCompletions[0].replacementSpan ? stringify(filterCompletions[0].replacementSpan) : undefined;
-                        error += "Expected replacement span: " + stringify(replacementSpan) + " to equal: " + spanText + ".";
                     }
                     this.raiseError(error);
                 }
@@ -2359,7 +2347,7 @@ namespace FourSlash {
             return text.substring(startPos, endPos);
         }
 
-        private assertItemInCompletionList(items: ts.CompletionEntry[], name: string, text?: string, documentation?: string, kind?: string, spanIndex?: number) {
+        private assertItemInCompletionList(items: ts.CompletionEntry[], name: string, text?: string, documentation?: string, kind?: string) {
             for (const item of items) {
                 if (item.name === name) {
                     if (documentation != undefined || text !== undefined) {
@@ -2375,11 +2363,6 @@ namespace FourSlash {
 
                     if (kind !== undefined) {
                         assert.equal(item.kind, kind, this.assertionMessageAtLastKnownMarker("completion item kind for " + name));
-                    }
-
-                    if (spanIndex !== undefined) {
-                        const span = this.getTextSpanForRangeAtIndex(spanIndex);
-                        assert.isTrue(TestState.textSpansEqual(span, item.replacementSpan), this.assertionMessageAtLastKnownMarker(stringify(span) + " does not equal " + stringify(item.replacementSpan) + " replacement span for " + name));
                     }
 
                     return;
@@ -2433,17 +2416,6 @@ namespace FourSlash {
         private getLineColStringAtPosition(position: number) {
             const pos = this.languageServiceAdapterHost.positionToLineAndCharacter(this.activeFile.fileName, position);
             return `line ${(pos.line + 1)}, col ${pos.character}`;
-        }
-
-        private getTextSpanForRangeAtIndex(index: number): ts.TextSpan {
-            const ranges = this.getRanges();
-            if (ranges && ranges.length > index) {
-                const range = ranges[index];
-                return { start: range.start, length: range.end - range.start };
-            }
-            else {
-                this.raiseError("Supplied span index: " + index + " does not exist in range list of size: " + (ranges ? 0 : ranges.length));
-            }
         }
 
         public getMarkerByName(markerName: string) {
@@ -3046,12 +3018,12 @@ namespace FourSlashInterface {
 
         // Verifies the completion list contains the specified symbol. The
         // completion list is brought up if necessary
-        public completionListContains(symbol: string, text?: string, documentation?: string, kind?: string, spanIndex?: number) {
+        public completionListContains(symbol: string, text?: string, documentation?: string, kind?: string) {
             if (this.negative) {
-                this.state.verifyCompletionListDoesNotContain(symbol, text, documentation, kind, spanIndex);
+                this.state.verifyCompletionListDoesNotContain(symbol, text, documentation, kind);
             }
             else {
-                this.state.verifyCompletionListContains(symbol, text, documentation, kind, spanIndex);
+                this.state.verifyCompletionListContains(symbol, text, documentation, kind);
             }
         }
 

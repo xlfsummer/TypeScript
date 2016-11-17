@@ -717,7 +717,7 @@ namespace ts.Completions {
         }
 
         function createCompletionEntryForModule(name: string, kind: string): CompletionEntry {
-            return { name, kind, kindModifiers: ScriptElementKindModifier.none, sortText: name};
+            return { name, kind, kindModifiers: ScriptElementKindModifier.none, sortText: name };
         }
 
         // Returns true if the path is explicitly relative to the script (i.e. relative to . or ..)
