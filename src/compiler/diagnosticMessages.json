@@ -3191,6 +3191,18 @@
         "category": "Error",
         "code": 90010
     },
+    "Import {0} from {1}": {
+        "category": "Message",
+        "code": 90013
+    },
+    "Change {0} to {1}": {
+        "category": "Message",
+        "code": 90014
+    },
+    "Add {0} to existing import declaration from {1}": {
+        "category": "Message",
+        "code": 90015
+    },
     "Extract method": {
         "category": "Message",
         "code": 90012
