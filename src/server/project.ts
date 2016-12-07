@@ -442,10 +442,6 @@ namespace ts.server {
          * @returns: true if set of files in the project stays the same and false - otherwise.
          */
         updateGraph(): boolean {
-            if (!this.languageServiceEnabled) {
-                return true;
-            }
-
             this.lsHost.startRecordingFilesWithChangedResolutions();
 
             let hasChanges = this.updateGraphWorker();
@@ -477,6 +473,14 @@ namespace ts.server {
             if (this.setTypings(cachedTypings)) {
                 hasChanges = this.updateGraphWorker() || hasChanges;
             }
+
+            if (this.languageServiceEnabled) {
+                this.builder.onProjectUpdateGraph();
+            }
+            else {
+                this.builder.clear();
+            }
+
             if (hasChanges) {
                 this.projectStructureVersion++;
             }
@@ -515,7 +519,6 @@ namespace ts.server {
                     }
                 }
             }
-            this.builder.onProjectUpdateGraph();
             return hasChanges;
         }
 

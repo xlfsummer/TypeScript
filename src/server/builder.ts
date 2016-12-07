@@ -75,17 +75,26 @@ namespace ts.server {
         getFilesAffectedBy(scriptInfo: ScriptInfo): string[];
         onProjectUpdateGraph(): void;
         emitFile(scriptInfo: ScriptInfo, writeFile: (path: string, data: string, writeByteOrderMark?: boolean) => void): boolean;
+        clear(): void;
     }
 
     abstract class AbstractBuilder<T extends BuilderFileInfo> implements Builder {
 
-        private fileInfos = createFileMap<T>();
+        private fileInfos: FileMap<T>;
 
         constructor(public readonly project: Project, private ctor: { new (scriptInfo: ScriptInfo, project: Project): T }) {
         }
 
+        private getFileInfos() {
+            return this.fileInfos || (this.fileInfos = createFileMap<T>());
+        }
+
+        public clear() {
+            this.fileInfos = undefined;
+        }
+
         protected getFileInfo(path: Path): T {
-            return this.fileInfos.get(path);
+            return this.getFileInfos().get(path);
         }
 
         protected getOrCreateFileInfo(path: Path): T {
@@ -99,19 +108,19 @@ namespace ts.server {
         }
 
         protected getFileInfoPaths(): Path[] {
-            return this.fileInfos.getKeys();
+            return this.getFileInfos().getKeys();
         }
 
         protected setFileInfo(path: Path, info: T) {
-            this.fileInfos.set(path, info);
+            this.getFileInfos().set(path, info);
         }
 
         protected removeFileInfo(path: Path) {
-            this.fileInfos.remove(path);
+            this.getFileInfos().remove(path);
         }
 
         protected forEachFileInfo(action: (fileInfo: T) => any) {
-            this.fileInfos.forEachValue((_path, value) => action(value));
+            this.getFileInfos().forEachValue((_path, value) => action(value));
         }
 
         abstract getFilesAffectedBy(scriptInfo: ScriptInfo): string[];
@@ -230,6 +239,11 @@ namespace ts.server {
         }
 
         private projectVersionForDependencyGraph: string;
+
+        public clear() {
+            this.projectVersionForDependencyGraph = undefined;
+            super.clear();
+        }
 
         private getReferencedFileInfos(fileInfo: ModuleBuilderFileInfo): ModuleBuilderFileInfo[] {
             if (!fileInfo.isExternalModuleOrHasOnlyAmbientExternalModules()) {
