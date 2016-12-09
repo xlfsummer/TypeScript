@@ -653,6 +653,9 @@ namespace ts.server {
                 }
 
                 if (!p.languageServiceEnabled) {
+                    // if project language service is disabled then we create a program only for open files.
+                    // this means that project should be marked as dirty to force rebuilding of the program
+                    // on the next request
                     p.markAsDirty();
                 }
             }
@@ -1222,6 +1225,9 @@ namespace ts.server {
                 }
             }
             if (project && !project.languageServiceEnabled) {
+                // if project language service is disabled then we create a program only for open files.
+                // this means that project should be marked as dirty to force rebuilding of the program
+                // on the next request
                 project.markAsDirty();
             }
 

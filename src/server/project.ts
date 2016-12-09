@@ -474,6 +474,8 @@ namespace ts.server {
                 hasChanges = this.updateGraphWorker() || hasChanges;
             }
 
+            // update builder only if language service is enabled
+            // otherwise tell it to drop its internal state
             if (this.languageServiceEnabled) {
                 this.builder.onProjectUpdateGraph();
             }

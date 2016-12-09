@@ -80,17 +80,23 @@ namespace ts.server {
 
     abstract class AbstractBuilder<T extends BuilderFileInfo> implements Builder {
 
-        private fileInfos: FileMap<T>;
+        /**
+         * stores set of files from the project.
+         * NOTE: this field is created on demand and should not be accessed directly.
+         * Use 'getFileInfos' instead.
+         */
+        private fileInfos_doNotAccessDirectly: FileMap<T>;
 
         constructor(public readonly project: Project, private ctor: { new (scriptInfo: ScriptInfo, project: Project): T }) {
         }
 
         private getFileInfos() {
-            return this.fileInfos || (this.fileInfos = createFileMap<T>());
+            return this.fileInfos_doNotAccessDirectly || (this.fileInfos_doNotAccessDirectly = createFileMap<T>());
         }
 
         public clear() {
-            this.fileInfos = undefined;
+            // drop the existing list - it will be re-created as necessary
+            this.fileInfos_doNotAccessDirectly = undefined;
         }
 
         protected getFileInfo(path: Path): T {
