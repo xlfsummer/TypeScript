@@ -283,7 +283,7 @@ namespace ts.server {
             const result: string[] = [];
             if (this.rootFiles) {
                 for (const f of this.rootFiles) {
-                    if (this.languageServiceEnabled || f.isOpen) {
+                    if (this.languageServiceEnabled || f.isScriptOpen()) {
                         // if language service is disabled - process only files that are open
                         result.push(f.fileName);
                     }
