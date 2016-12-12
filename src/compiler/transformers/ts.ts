@@ -345,6 +345,7 @@ namespace ts {
 
                 case SyntaxKind.PropertyDeclaration:
                     // TypeScript property declarations are elided.
+                    return undefined;
 
                 case SyntaxKind.Constructor:
                     return visitConstructor(<ConstructorDeclaration>node);
@@ -1222,11 +1223,12 @@ namespace ts {
             }
 
             const { firstAccessor, secondAccessor, setAccessor } = getAllAccessorDeclarations(node.members, accessor);
-            if (accessor !== firstAccessor) {
+            const firstAccessorWithDecorators = firstAccessor.decorators ? firstAccessor : secondAccessor && secondAccessor.decorators ? secondAccessor : undefined;
+            if (!firstAccessorWithDecorators || accessor !== firstAccessorWithDecorators) {
                 return undefined;
             }
 
-            const decorators = firstAccessor.decorators || (secondAccessor && secondAccessor.decorators);
+            const decorators = firstAccessorWithDecorators.decorators;
             const parameters = getDecoratorsOfParameters(setAccessor);
             if (!decorators && !parameters) {
                 return undefined;
@@ -1353,13 +1355,13 @@ namespace ts {
             //       __metadata("design:type", Function),
             //       __metadata("design:paramtypes", [Object]),
             //       __metadata("design:returntype", void 0)
-            //   ], C.prototype, "method", undefined);
+            //   ], C.prototype, "method", null);
             //
             // The emit for an accessor is:
             //
             //   __decorate([
             //       dec
-            //   ], C.prototype, "accessor", undefined);
+            //   ], C.prototype, "accessor", null);
             //
             // The emit for a property is:
             //
@@ -1905,7 +1907,7 @@ namespace ts {
                     : (<ComputedPropertyName>name).expression;
             }
             else if (isIdentifier(name)) {
-                return createLiteral(name.text);
+                return createLiteral(unescapeIdentifier(name.text));
             }
             else {
                 return getSynthesizedClone(name);

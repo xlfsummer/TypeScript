@@ -1306,7 +1306,9 @@ namespace ts {
                             createAssignment(
                                 createElementAccess(
                                     expressionName,
-                                    createSubtract(temp, createLiteral(restIndex))
+                                    restIndex === 0
+                                        ? temp
+                                        : createSubtract(temp, createLiteral(restIndex))
                                 ),
                                 createElementAccess(createIdentifier("arguments"), temp)
                             ),
@@ -2284,14 +2286,19 @@ namespace ts {
                 }
             }
 
+            startLexicalEnvironment();
             let loopBody = visitNode(node.statement, visitor, isStatement);
+            const lexicalEnvironment = endLexicalEnvironment();
 
             const currentState = convertedLoopState;
             convertedLoopState = outerConvertedLoopState;
 
-            if (loopOutParameters.length) {
+            if (loopOutParameters.length || lexicalEnvironment) {
                 const statements = isBlock(loopBody) ? (<Block>loopBody).statements.slice() : [loopBody];
-                copyOutParameters(loopOutParameters, CopyDirection.ToOutParameter, statements);
+                if (loopOutParameters.length) {
+                    copyOutParameters(loopOutParameters, CopyDirection.ToOutParameter, statements);
+                }
+                addRange(statements, lexicalEnvironment)
                 loopBody = createBlock(statements, /*location*/ undefined, /*multiline*/ true);
             }
 
@@ -2835,7 +2842,6 @@ namespace ts {
                 //      _super.call(this, a)
                 //      _super.m.call(this, a)
                 //      _super.prototype.m.call(this, a)
-
                 resultingCall = createFunctionCall(
                     visitNode(target, visitor, isExpression),
                     visitNode(thisArg, visitor, isExpression),

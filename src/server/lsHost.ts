@@ -23,7 +23,7 @@ namespace ts.server {
             }
 
             this.resolveModuleName = (moduleName, containingFile, compilerOptions, host) => {
-                const globalCache = this.project.getTypingOptions().enableAutoDiscovery
+                const globalCache = this.project.getTypeAcquisition().enable
                     ? this.project.projectService.typingsInstaller.globalTypingsCacheLocation
                     : undefined;
                 const primaryResult = resolveModuleName(moduleName, containingFile, compilerOptions, host);
@@ -169,7 +169,7 @@ namespace ts.server {
         getScriptSnapshot(filename: string): ts.IScriptSnapshot {
             const scriptInfo = this.project.getScriptInfoLSHost(filename);
             if (scriptInfo) {
-                return scriptInfo.snap();
+                return scriptInfo.getSnapshot();
             }
         }
 

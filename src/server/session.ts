@@ -53,8 +53,8 @@ namespace ts.server {
     function formatDiag(fileName: NormalizedPath, project: Project, diag: ts.Diagnostic): protocol.Diagnostic {
         const scriptInfo = project.getScriptInfoForNormalizedPath(fileName);
         return {
-            start: scriptInfo.positionToOneIndexedLineOffset(diag.start),
-            end: scriptInfo.positionToOneIndexedLineOffset(diag.start + diag.length),
+            start: scriptInfo.positionToLineOffset(diag.start),
+            end: scriptInfo.positionToLineOffset(diag.start + diag.length),
             text: ts.flattenDiagnosticMessageText(diag.messageText, "\n"),
             code: diag.code
         };
@@ -396,8 +396,8 @@ namespace ts.server {
                 length: d.length,
                 category: DiagnosticCategory[d.category].toLowerCase(),
                 code: d.code,
-                startLocation: scriptInfo && scriptInfo.positionToOneIndexedLineOffset(d.start),
-                endLocation: scriptInfo && scriptInfo.positionToOneIndexedLineOffset(d.start + d.length)
+                startLocation: scriptInfo && scriptInfo.positionToLineOffset(d.start),
+                endLocation: scriptInfo && scriptInfo.positionToLineOffset(d.start + d.length)
             });
         }
 
@@ -428,8 +428,8 @@ namespace ts.server {
                     const defScriptInfo = project.getScriptInfo(def.fileName);
                     return {
                         file: def.fileName,
-                        start: defScriptInfo.positionToOneIndexedLineOffset(def.textSpan.start),
-                        end: defScriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(def.textSpan))
+                        start: defScriptInfo.positionToLineOffset(def.textSpan.start),
+                        end: defScriptInfo.positionToLineOffset(ts.textSpanEnd(def.textSpan))
                     };
                 });
             }
@@ -452,8 +452,8 @@ namespace ts.server {
                 const defScriptInfo = project.getScriptInfo(def.fileName);
                 return {
                     file: def.fileName,
-                    start: defScriptInfo.positionToOneIndexedLineOffset(def.textSpan.start),
-                    end: defScriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(def.textSpan))
+                    start: defScriptInfo.positionToLineOffset(def.textSpan.start),
+                    end: defScriptInfo.positionToLineOffset(ts.textSpanEnd(def.textSpan))
                 };
             });
         }
@@ -469,8 +469,8 @@ namespace ts.server {
             if (simplifiedResult) {
                 return implementations.map(impl => ({
                     file: impl.fileName,
-                    start: scriptInfo.positionToOneIndexedLineOffset(impl.textSpan.start),
-                    end: scriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(impl.textSpan))
+                    start: scriptInfo.positionToLineOffset(impl.textSpan.start),
+                    end: scriptInfo.positionToLineOffset(ts.textSpanEnd(impl.textSpan))
                 }));
             }
             else {
@@ -492,8 +492,8 @@ namespace ts.server {
             return occurrences.map(occurrence => {
                 const { fileName, isWriteAccess, textSpan } = occurrence;
                 const scriptInfo = project.getScriptInfo(fileName);
-                const start = scriptInfo.positionToOneIndexedLineOffset(textSpan.start);
-                const end = scriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(textSpan));
+                const start = scriptInfo.positionToLineOffset(textSpan.start);
+                const end = scriptInfo.positionToLineOffset(ts.textSpanEnd(textSpan));
                 return {
                     start,
                     end,
@@ -539,8 +539,8 @@ namespace ts.server {
 
                 function convertHighlightSpan(highlightSpan: ts.HighlightSpan): ts.server.protocol.HighlightSpan {
                     const { textSpan, kind } = highlightSpan;
-                    const start = scriptInfo.positionToOneIndexedLineOffset(textSpan.start);
-                    const end = scriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(textSpan));
+                    const start = scriptInfo.positionToLineOffset(textSpan.start);
+                    const end = scriptInfo.positionToLineOffset(ts.textSpanEnd(textSpan));
                     return { start, end, kind };
                 }
             }
@@ -624,8 +624,8 @@ namespace ts.server {
                             const locationScriptInfo = project.getScriptInfo(location.fileName);
                             return <protocol.FileSpan>{
                                 file: location.fileName,
-                                start: locationScriptInfo.positionToOneIndexedLineOffset(location.textSpan.start),
-                                end: locationScriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(location.textSpan)),
+                                start: locationScriptInfo.positionToLineOffset(location.textSpan.start),
+                                end: locationScriptInfo.positionToLineOffset(ts.textSpanEnd(location.textSpan)),
                             };
                         });
                     },
@@ -708,8 +708,8 @@ namespace ts.server {
 
                 const displayString = ts.displayPartsToString(nameInfo.displayParts);
                 const nameSpan = nameInfo.textSpan;
-                const nameColStart = scriptInfo.positionToOneIndexedLineOffset(nameSpan.start).offset;
-                const nameText = scriptInfo.snap().getText(nameSpan.start, ts.textSpanEnd(nameSpan));
+                const nameColStart = scriptInfo.positionToLineOffset(nameSpan.start).offset;
+                const nameText = scriptInfo.getSnapshot().getText(nameSpan.start, ts.textSpanEnd(nameSpan));
                 const refs = combineProjectOutput<protocol.ReferencesResponseItem>(
                     projects,
                     (project: Project) => {
@@ -720,14 +720,14 @@ namespace ts.server {
 
                         return references.map(ref => {
                             const refScriptInfo = project.getScriptInfo(ref.fileName);
-                            const start = refScriptInfo.positionToOneIndexedLineOffset(ref.textSpan.start);
+                            const start = refScriptInfo.positionToLineOffset(ref.textSpan.start);
                             const refLineSpan = refScriptInfo.lineToTextSpan(start.line - 1);
-                            const lineText = refScriptInfo.snap().getText(refLineSpan.start, ts.textSpanEnd(refLineSpan)).replace(/\r|\n/g, "");
+                            const lineText = refScriptInfo.getSnapshot().getText(refLineSpan.start, ts.textSpanEnd(refLineSpan)).replace(/\r|\n/g, "");
                             return {
                                 file: ref.fileName,
                                 start: start,
                                 lineText: lineText,
-                                end: refScriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(ref.textSpan)),
+                                end: refScriptInfo.positionToLineOffset(ts.textSpanEnd(ref.textSpan)),
                                 isWriteAccess: ref.isWriteAccess,
                                 isDefinition: ref.isDefinition
                             };
@@ -856,8 +856,8 @@ namespace ts.server {
                 return {
                     kind: quickInfo.kind,
                     kindModifiers: quickInfo.kindModifiers,
-                    start: scriptInfo.positionToOneIndexedLineOffset(quickInfo.textSpan.start),
-                    end: scriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(quickInfo.textSpan)),
+                    start: scriptInfo.positionToLineOffset(quickInfo.textSpan.start),
+                    end: scriptInfo.positionToLineOffset(ts.textSpanEnd(quickInfo.textSpan)),
                     displayString: displayString,
                     documentation: docString,
                 };
@@ -952,8 +952,8 @@ namespace ts.server {
 
             return edits.map((edit) => {
                 return {
-                    start: scriptInfo.positionToOneIndexedLineOffset(edit.span.start),
-                    end: scriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(edit.span)),
+                    start: scriptInfo.positionToLineOffset(edit.span.start),
+                    end: scriptInfo.positionToLineOffset(ts.textSpanEnd(edit.span)),
                     newText: edit.newText ? edit.newText : ""
                 };
             });
@@ -1051,8 +1051,8 @@ namespace ts.server {
                 return {
                     items: helpItems.items,
                     applicableSpan: {
-                        start: scriptInfo.positionToOneIndexedLineOffset(span.start),
-                        end: scriptInfo.positionToOneIndexedLineOffset(span.start + span.length)
+                        start: scriptInfo.positionToLineOffset(span.start),
+                        end: scriptInfo.positionToLineOffset(span.start + span.length)
                     },
                     selectedItemIndex: helpItems.selectedItemIndex,
                     argumentIndex: helpItems.argumentIndex,
@@ -1154,8 +1154,8 @@ namespace ts.server {
 
         private toOneIndexedProtocolSpan(span: TextSpan, scriptInfo: ScriptInfo): protocol.TextSpan {
             return {
-                start: scriptInfo.positionToOneIndexedLineOffset(span.start),
-                end: scriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(span))
+                start: scriptInfo.positionToLineOffset(span.start),
+                end: scriptInfo.positionToLineOffset(ts.textSpanEnd(span))
             };
         }
 
@@ -1191,8 +1191,8 @@ namespace ts.server {
 
                         return navItems.map((navItem) => {
                             const scriptInfo = project.getScriptInfo(navItem.fileName);
-                            const start = scriptInfo.positionToOneIndexedLineOffset(navItem.textSpan.start);
-                            const end = scriptInfo.positionToOneIndexedLineOffset(ts.textSpanEnd(navItem.textSpan));
+                            const start = scriptInfo.positionToLineOffset(navItem.textSpan.start);
+                            const end = scriptInfo.positionToLineOffset(ts.textSpanEnd(navItem.textSpan));
                             const bakedItem: protocol.NavtoItem = {
                                 name: navItem.name,
                                 kind: navItem.kind,
@@ -1299,8 +1299,8 @@ namespace ts.server {
 
         private convertTextChangeToCodeEdit(change: ts.TextChange, scriptInfo: ScriptInfo): protocol.CodeEdit {
             return {
-                start: scriptInfo.positionToOneIndexedLineOffset(change.span.start),
-                end: scriptInfo.positionToOneIndexedLineOffset(change.span.start + change.span.length),
+                start: scriptInfo.positionToLineOffset(change.span.start),
+                end: scriptInfo.positionToLineOffset(change.span.start + change.span.length),
                 newText: change.newText ? change.newText : ""
             };
         }
@@ -1340,7 +1340,7 @@ namespace ts.server {
                     highPriorityFiles.push(fileNameInProject);
                 else {
                     const info = this.projectService.getScriptInfo(fileNameInProject);
-                    if (!info.isOpen) {
+                    if (!info.isScriptOpen()) {
                         if (fileNameInProject.indexOf(".d.ts") > 0)
                             veryLowPriorityFiles.push(fileNameInProject);
                         else
@@ -1379,14 +1379,12 @@ namespace ts.server {
 
         private handlers = createMap<(request: protocol.Request) => { response?: any, responseRequired?: boolean }>({
             [CommandNames.OpenExternalProject]: (request: protocol.OpenExternalProjectRequest) => {
-                this.projectService.openExternalProject(request.arguments);
+                this.projectService.openExternalProject(request.arguments, /*suppressRefreshOfInferredProjects*/ false);
                 // TODO: report errors
                 return this.requiredResponse(true);
             },
             [CommandNames.OpenExternalProjects]: (request: protocol.OpenExternalProjectsRequest) => {
-                for (const proj of request.arguments.projects) {
-                    this.projectService.openExternalProject(proj);
-                }
+                this.projectService.openExternalProjects(request.arguments.projects);
                 // TODO: report errors
                 return this.requiredResponse(true);
             },
