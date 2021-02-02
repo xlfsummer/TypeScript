@@ -97,7 +97,7 @@ interface TextStreamReader extends TextStreamBase {
     AtEndOfStream: boolean;
 }
 
-declare var WScript: {
+interface WScript {
     /**
     * Outputs text to either a message box (under WScript.exe) or the command console window followed by
     * a newline (under CScript.exe).
@@ -199,7 +199,9 @@ declare var WScript: {
      * @param intTime Interval (in milliseconds) to suspend script execution.
      */
     Sleep(intTime: number): void;
-};
+}
+
+declare var WScript: WScript;
 
 /**
  * Allows enumerating over a COM collection, which may not have indexed item access.
